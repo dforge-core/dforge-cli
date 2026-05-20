@@ -47,9 +47,18 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: '22'
-          # registry-url is required even with Trusted Publisher — pnpm/npm
-          # use it to know which registry the OIDC exchange should target.
-          registry-url: 'https://registry.npmjs.org'
+          # Intentionally NO registry-url: when set, setup-node writes a
+          # .npmrc with `_authToken=${NODE_AUTH_TOKEN}` placeholder. Without
+          # NODE_AUTH_TOKEN set, npm/pnpm publish sees a literal fake token
+          # ("XXXXX-XXXXX-XXXXX-XXXXX"), tries to auth with it, gets 404
+          # — and never falls back to the OIDC Trusted Publisher exchange.
+          # Default registry is npmjs.org anyway.
+
+      # npm Trusted Publisher OIDC requires npm CLI >= 11.5.1. Node 22's
+      # bundled npm is 10.9.7, which silently falls back to (missing) token
+      # auth and 404s. Upgrade explicitly before any publish runs.
+      - name: Upgrade npm for OIDC Trusted Publisher support
+        run: npm install -g npm@latest
 
       - name: Fetch binaries from source-repo release
         env:

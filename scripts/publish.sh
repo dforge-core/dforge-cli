@@ -220,7 +220,10 @@ publish_one() {
 	local pkg="$1"; shift
 	(
 		cd "$(pkg_dir "$pkg")"
-		pnpm publish --no-git-checks --access public --tag "$NPM_TAG" "$@" 2>&1
+		# Use npm (not pnpm) for the actual publish so npm CLI's built-in
+		# OIDC Trusted Publisher exchange kicks in. Requires npm >= 11.5.1
+		# — the workflow upgrades npm explicitly before this script runs.
+		npm publish --access public --tag "$NPM_TAG" "$@" 2>&1
 	)
 }
 
