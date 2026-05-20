@@ -84,15 +84,106 @@ C# source lives in [`iash44/dForge-core`](https://github.com/iash44/dForge-core)
 under `server/src/dForge.Cli/`. This repo only ships the npm wrapper + 6
 platform sidecars. Release flow:
 
-1. Tag `cli-vX.Y.Z` in `dForge-core` → `.github/workflows/release-cli.yml`
-   cross-compiles 6 binaries and attaches them to a GitHub Release.
-2. Run `gh workflow run publish.yml -f source_tag=cli-vX.Y.Z -f npm_version=X.Y.Z -f npm_tag=next`
-   in this repo. `scripts/fetch-binaries.sh` pulls binaries from the source
-   release; `scripts/publish.sh` aligns versions and publishes 7 packages.
-3. After smoke-testing `npx -y @dforge-core/dforge-cli@next --version`, promote
-   with another workflow run using `-f npm_tag=latest`.
+1. **Tag the source repo.** From a clean `main` in `iash44/dForge-core`:
+   ```bash
+   git checkout main && git pull
+   git tag cli-v0.1.0                       # NOTE: prefix is cli-v, no `release/` etc.
+   git push origin cli-v0.1.0
+   ```
+   The `cli-v*` tag triggers `.github/workflows/release-cli.yml`, which
+   cross-compiles 6 binaries (3–4 min) and attaches them as assets to a
+   GitHub Release at that tag. Watch:
+   ```bash
+   gh run watch --repo iash44/dForge-core
+   gh release view cli-v0.1.0 --repo iash44/dForge-core   # should list 6 assets
+   ```
+
+2. **Publish to npm under `next`.** From anywhere (workflow runs in CI):
+   ```bash
+   gh workflow run publish.yml --repo dforge-core/dforge-cli \
+     -f source_tag=cli-v0.1.0 \
+     -f npm_version=0.1.0 \
+     -f npm_tag=next
+   ```
+   `source_tag` is the source-repo git tag (with `cli-v` prefix);
+   `npm_version` is the npm semver (no prefix). They don't have to match
+   — pre-release suffixes are fine (`cli-v0.1.0-rc.1` → `0.1.0-rc.1`).
+
+3. **Smoke test, then promote.**
+   ```bash
+   npx -y @dforge-core/dforge-cli@next --version   # exits 0, prints sha + build time
+   ```
+   If happy, promote the SAME version to `latest`:
+   ```bash
+   gh workflow run publish.yml --repo dforge-core/dforge-cli \
+     -f source_tag=cli-v0.1.0 \
+     -f npm_version=0.1.0 \
+     -f npm_tag=latest
+   ```
+   This re-publishes (idempotent for the same `npm_version`) and moves
+   the `latest` dist-tag. End users running `npm i -g @dforge-core/dforge-cli`
+   now get this version.
+
+**Choosing the version number.** `npm_version` is permanent once published
+— npm only allows unpublish within 72h and burns the version slot forever
+after. Use the `0.X.Y-rc.N` / `0.X.Y-test.N` pattern for shake-out runs
+(`npm_tag=next`), and reserve plain `0.X.Y` for what you actually want
+people to install (`npm_tag=latest`).
 
 To test a freshly-built binary without going through the publish pipeline,
 set `DFORGE_CLI_BINARY=/path/to/dforge-cli` and `node index.js` will exec
 that path directly, skipping require.resolve and the sibling-packages
 fallback.
+
+### CI auth setup (non-obvious, easy to miss)
+
+The `publish.yml` workflow uses two auth mechanisms that both have to be
+configured outside the repo:
+
+**1. npm Trusted Publisher — must be set up for ALL 7 package names**
+
+OIDC publishing is configured per-package in the npm UI, not at the org
+level. Each of these needs its own Trusted Publisher entry pointing at
+`dforge-core/dforge-cli` / `publish.yml`:
+
+- `@dforge-core/dforge-cli` (wrapper)
+- `@dforge-core/dforge-cli-darwin-arm64`
+- `@dforge-core/dforge-cli-darwin-x64`
+- `@dforge-core/dforge-cli-linux-arm64`
+- `@dforge-core/dforge-cli-linux-x64`
+- `@dforge-core/dforge-cli-win32-arm64`
+- `@dforge-core/dforge-cli-win32-x64`
+
+Visit `npmjs.com/package/<name>/access` for each, scroll to **Trusted
+Publisher**, click Add. Missing config produces a confusing **404** on
+publish (npm returns 404 instead of 401 to avoid leaking package existence).
+
+**2. `SOURCE_REPO_PAT` secret — private cross-owner read**
+
+The source repo (`iash44/dForge-core`) is private and lives under a
+different owner than this dist repo. The workflow-issued `GITHUB_TOKEN`
+can't reach it. Create a fine-grained PAT with **Contents: Read** on
+`iash44/dForge-core` and store it as a repo secret named exactly
+`SOURCE_REPO_PAT`:
+
+```bash
+gh secret set SOURCE_REPO_PAT --repo dforge-core/dforge-cli
+```
+
+Fine-grained PATs can't be renewed — when it expires, regenerate and
+re-run the `gh secret set` command.
+
+### Workflow gotchas worth knowing
+
+- **Node 24, not 22.** Node 22 ships npm 10.9.7, which doesn't support
+  Trusted Publisher OIDC. `npm install -g npm@latest` on top of npm 10
+  fails on Ubuntu runners with `Cannot find module 'promise-retry'`
+  (arborist self-upgrade bug). Node 24 ships npm 11.x natively.
+- **No `registry-url` in setup-node.** When set, it writes a `.npmrc`
+  with `_authToken=${NODE_AUTH_TOKEN}`. With no `NODE_AUTH_TOKEN` env,
+  the literal placeholder `XXXXX-XXXXX-XXXXX-XXXXX` ends up as the
+  token, and npm uses it instead of falling back to OIDC. Default
+  registry is npmjs.org anyway.
+- **`npm publish`, not `pnpm publish`.** pnpm's OIDC Trusted Publisher
+  support lags npm's. The script uses pnpm for everything else and only
+  shells to `npm publish` for the actual upload.
