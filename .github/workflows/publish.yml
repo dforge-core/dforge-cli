@@ -1,0 +1,73 @@
+name: publish
+
+# Manual publish flow: pull binaries from a release on dforge-core/dForge-core,
+# bump versions, publish to npm. Never auto-triggers — a bad release tag must
+# not silently become `latest`. Run via:
+#   gh workflow run publish.yml \
+#     --repo dforge-core/dforge-cli \
+#     -f source_tag=cli-v0.1.0-rc.2 \
+#     -f npm_version=0.1.0-rc.2 \
+#     -f npm_tag=next
+# Promote to latest with a second run using -f npm_tag=latest.
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_tag:
+        description: 'cli-vX.Y.Z tag in dforge-core/dForge-core to fetch binaries from'
+        required: true
+        type: string
+      npm_version:
+        description: 'npm version to publish, e.g. 0.1.0-rc.2'
+        required: true
+        type: string
+      npm_tag:
+        description: 'npm dist-tag'
+        required: false
+        type: string
+        default: 'next'
+
+permissions:
+  contents: read
+  # id-token: write enables both npm Trusted Publisher (OIDC auth — no
+  # NPM_TOKEN secret needed) AND npm provenance (--provenance is passed
+  # unconditionally in publish.sh). Both reuse the same GitHub OIDC token.
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          # registry-url is required even with Trusted Publisher — pnpm/npm
+          # use it to know which registry the OIDC exchange should target.
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Fetch binaries from source-repo release
+        env:
+          # GITHUB_TOKEN works when both repos are in the same org and the
+          # source release is public. For private cross-repo reads, set a
+          # SOURCE_REPO_PAT secret (PAT with `repo` scope) and reference it
+          # here instead: GH_TOKEN: ${{ secrets.SOURCE_REPO_PAT }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: scripts/fetch-binaries.sh "${{ inputs.source_tag }}"
+
+      # Auth is via npm Trusted Publisher (configured in the npm UI under
+      # @dforge-core/dforge-cli → Settings → Trusted Publisher). The OIDC
+      # token issued by the id-token: write permission above is exchanged
+      # for a short-lived publish credential at publish time — no NPM_TOKEN
+      # secret needed. Provenance piggybacks on the same OIDC exchange.
+      - name: Publish to npm
+        run: |
+          scripts/publish.sh \
+            --version "${{ inputs.npm_version }}" \
+            --tag "${{ inputs.npm_tag }}" \
+            --yes

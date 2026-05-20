@@ -251,7 +251,7 @@ else
 fi
 echo
 echo "  ${C_DIM}Note: once published, $TARGET_VERSION is permanent.${C_OFF}"
-echo "  ${C_DIM}npm allows unpublish within 24h of first publish, then the version is burned.${C_OFF}"
+echo "  ${C_DIM}npm allows unpublish within 72h of first publish, then the version is burned.${C_OFF}"
 echo
 if [ "$ASSUME_YES" -eq 0 ]; then
 	printf "  Publish for real? [y/N] "

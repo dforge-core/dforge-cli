@@ -77,3 +77,22 @@ The validate/pack/install pipeline is the same code that runs on the dForge
 server, packaged as a single-file binary per platform via `dotnet publish
 --self-contained`. Avoids drift between author-time validation and server-side
 install validation: same parser, same validators, same error messages.
+
+## For maintainers
+
+C# source lives in [`dforge-core/dForge-core`](https://github.com/dforge-core/dForge-core)
+under `server/src/dForge.Cli/`. This repo only ships the npm wrapper + 6
+platform sidecars. Release flow:
+
+1. Tag `cli-vX.Y.Z` in `dForge-core` → `.github/workflows/release-cli.yml`
+   cross-compiles 6 binaries and attaches them to a GitHub Release.
+2. Run `gh workflow run publish.yml -f source_tag=cli-vX.Y.Z -f npm_version=X.Y.Z -f npm_tag=next`
+   in this repo. `scripts/fetch-binaries.sh` pulls binaries from the source
+   release; `scripts/publish.sh` aligns versions and publishes 7 packages.
+3. After smoke-testing `npx -y @dforge-core/dforge-cli@next --version`, promote
+   with another workflow run using `-f npm_tag=latest`.
+
+To test a freshly-built binary without going through the publish pipeline,
+set `DFORGE_CLI_BINARY=/path/to/dforge-cli` and `node index.js` will exec
+that path directly, skipping require.resolve and the sibling-packages
+fallback.

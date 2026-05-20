@@ -1,0 +1,19 @@
+# Platform binaries are fetched on demand by scripts/fetch-binaries.sh from
+# a GitHub Release on dforge-core/dForge-core and placed under
+# packages/<name>/bin/ just before publish. Never commit them — they're
+# multi-tens-of-MB per platform, six of them, and they get rebuilt with
+# every CLI release.
+packages/*/bin/
+
+# npm artifacts
+node_modules/
+*.tgz
+
+# OS / editor
+.DS_Store
+*.swp
+*.swo
+
+# CI / local scratch
+.env
+.env.local
