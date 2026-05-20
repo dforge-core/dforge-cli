@@ -1,5 +1,5 @@
 #!/bin/bash
-# Download dForge.Cli binaries from a GitHub Release on dforge-core/dForge-core
+# Download dForge.Cli binaries from a GitHub Release on iash44/dForge-core
 # and place each one in its npm-sidecar bin/ dir. The source repo's
 # release-cli workflow names assets by RID (dforge-cli-osx-arm64,
 # dforge-cli-win-x64.exe, …); this script maps each RID asset to the npm
@@ -17,7 +17,7 @@ set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-SOURCE_REPO="dforge-core/dForge-core"
+SOURCE_REPO="iash44/dForge-core"
 
 TAG="${1:-}"
 if [ -z "$TAG" ]; then

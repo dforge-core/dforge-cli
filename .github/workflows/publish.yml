@@ -1,6 +1,6 @@
 name: publish
 
-# Manual publish flow: pull binaries from a release on dforge-core/dForge-core,
+# Manual publish flow: pull binaries from a release on iash44/dForge-core,
 # bump versions, publish to npm. Never auto-triggers — a bad release tag must
 # not silently become `latest`. Run via:
 #   gh workflow run publish.yml \
@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       source_tag:
-        description: 'cli-vX.Y.Z tag in dforge-core/dForge-core to fetch binaries from'
+        description: 'cli-vX.Y.Z tag in iash44/dForge-core to fetch binaries from'
         required: true
         type: string
       npm_version:
@@ -38,26 +38,27 @@ jobs:
   publish:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '22'
           # registry-url is required even with Trusted Publisher — pnpm/npm
           # use it to know which registry the OIDC exchange should target.
           registry-url: 'https://registry.npmjs.org'
 
       - name: Fetch binaries from source-repo release
         env:
-          # GITHUB_TOKEN works when both repos are in the same org and the
-          # source release is public. For private cross-repo reads, set a
-          # SOURCE_REPO_PAT secret (PAT with `repo` scope) and reference it
-          # here instead: GH_TOKEN: ${{ secrets.SOURCE_REPO_PAT }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Source repo iash44/dForge-core is private and lives under a
+          # different owner than this dist repo, so the workflow-issued
+          # GITHUB_TOKEN can't reach it. SOURCE_REPO_PAT is a fine-grained
+          # PAT with Contents: Read on iash44/dForge-core, stored as a
+          # repo secret on dforge-core/dforge-cli.
+          GH_TOKEN: ${{ secrets.SOURCE_REPO_PAT }}
         run: scripts/fetch-binaries.sh "${{ inputs.source_tag }}"
 
       # Auth is via npm Trusted Publisher (configured in the npm UI under

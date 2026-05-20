@@ -80,7 +80,7 @@ install validation: same parser, same validators, same error messages.
 
 ## For maintainers
 
-C# source lives in [`dforge-core/dForge-core`](https://github.com/dforge-core/dForge-core)
+C# source lives in [`iash44/dForge-core`](https://github.com/iash44/dForge-core)
 under `server/src/dForge.Cli/`. This repo only ships the npm wrapper + 6
 platform sidecars. Release flow:
 
