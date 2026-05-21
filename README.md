@@ -17,9 +17,7 @@ macOS arm64/x64, Linux x64/arm64, Windows x64/arm64.
 ## Commands
 
 ```bash
-# Scaffold a new module interactively (asks for code/displayName/dependencies/
-# preset/initial entity). Generates manifest with a real UUID, writes the
-# minimum file set so the module installs cleanly.
+# Scaffold a new module interactively (see `Scaffolding a new module` below).
 dforge-cli init module ./my-module
 
 # Package a module directory into a .dforge archive
@@ -40,6 +38,58 @@ DFORGE_URL=https://app.example.com DFORGE_TOKEN=<jwt> \
 # DBML → module scaffold (stub — implementation lands in a follow-up)
 dforge-cli dbml-import --from-dbml ./schema.dbml
 ```
+
+## Scaffolding a new module
+
+```bash
+dforge-cli init module ./my-module
+```
+
+Walks you through an interactive setup and writes a fresh module that's
+ready to `pack` and `install`.
+
+### What it asks
+
+| Prompt | Default | Notes |
+|---|---|---|
+| Module code | (none) | `^[a-z][a-z0-9_-]*$` — becomes the DB schema name and `module_cd` |
+| Display name | titlecased `code` | shown in the UI |
+| Description | (empty) | optional |
+| Author name | `git config user.name` | optional |
+| License | `MIT` | |
+| Version | `0.1.0` | semver |
+| DB schema version | `0.0.1` | bumped when you alter physical columns |
+| Dependencies | `admin`, `metadata` | toggle which system modules you depend on |
+| Preset | Minimal | see below |
+| First entity name | (none) | `^[a-z][a-z0-9_]*$` — table/entity code |
+| First entity label | titlecased name | display label |
+| Traits | `identity + audit` | see below |
+
+`moduleId` (the immutable UUID) is auto-generated with `crypto.randomUUID()` — no prompt.
+
+### Presets
+
+- **Minimal** — manifest + one entity + minimum UI (`data_views`, `folders`, `menus`, `actions`) + one admin role. ~8 files. Installs as-is; you add fields/views/roles from there.
+- **Minimal + add more entities interactively** — same as Minimal, then loops to add additional entities (name + label + traits per entity) so you don't have to re-run.
+- **Full template** — Minimal plus `settings.json`, `translations/en-US.json`, a `seed-data/01-<entity>.json` per entity, and a `logic/actions/` stub directory. Use this when you want the typical optional files scaffolded for you to fill in (or delete).
+
+### Entity traits
+
+The "traits" choice controls which built-in columns the entity gets for free — both rendered by the platform, no need to declare in `fields`:
+
+- **identity only** — primary key only. Use for lookup tables that don't need audit columns.
+- **identity + audit** (recommended) — primary key + `created_date` + `last_updated` + `created_by` + `last_updated_by`. Standard for any business entity.
+
+You can change traits later by editing the entity JSON.
+
+### After scaffold
+
+```bash
+cd ./my-module
+dforge-cli module install --path . --code <tenant>   # full validation + install
+```
+
+The first install runs the full server-side validator (manifest, FK targets, package-filter SQL, migration safety) — fix anything it flags, then re-run.
 
 ## Auth
 
