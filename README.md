@@ -91,6 +91,42 @@ dforge-cli module install --path . --code <tenant>   # full validation + install
 
 The first install runs the full server-side validator (manifest, FK targets, package-filter SQL, migration safety) — fix anything it flags, then re-run.
 
+### Programmatic use (subpath export)
+
+The pure-TS builders behind `init module` are also exposed as a library entry, so downstream packages can compose module file maps without shelling to the CLI. Used by [`@dforge-core/dforge-mcp`](https://www.npmjs.com/package/@dforge-core/dforge-mcp) to drive AI-authored modules.
+
+```ts
+import {
+	buildManifest,
+	buildEntity,
+	buildDataViews,
+	buildFolders,
+	buildMenus,
+	buildRoles,
+} from "@dforge-core/dforge-cli/templates";
+import type { ScaffoldOpts, EntitySpec } from "@dforge-core/dforge-cli/templates";
+import { randomUUID } from "node:crypto";
+
+const opts: ScaffoldOpts = {
+	path: "",
+	code: "smoke",
+	displayName: "Smoke",
+	description: "",
+	author: "",
+	license: "MIT",
+	version: "0.1.0",
+	dbSchemaVersion: "0.0.1",
+	dependencies: ["admin", "metadata"],
+	preset: "minimal",
+	entities: [{ name: "thing", label: "Thing", traits: "identity+audit" }],
+};
+
+const manifest = buildManifest(opts, randomUUID());
+// → plain JS object, ready for JSON.stringify
+```
+
+All builders are pure functions returning plain JS objects (no I/O). The subpath ships dual CJS + ESM + `.d.ts` types.
+
 ## Auth
 
 The remote `module install --url` and `marketplace publish` flows need a JWT
