@@ -89,12 +89,15 @@ read_version() {
 
 write_version() {
 	local pj="$1"; local v="$2"
+	# ensure_ascii=False keeps non-ASCII chars (em-dashes, accented letters,
+	# emoji) as literals instead of \uXXXX escapes — Python's default would
+	# re-mangle a clean package.json on every publish.
 	python3 -c '
 import json,sys
 p=sys.argv[1]; v=sys.argv[2]
 d=json.load(open(p))
 d["version"]=v
-with open(p,"w") as f: json.dump(d, f, indent="\t"); f.write("\n")
+with open(p,"w",encoding="utf-8") as f: json.dump(d, f, indent="\t", ensure_ascii=False); f.write("\n")
 ' "$pj" "$v"
 }
 
@@ -104,6 +107,7 @@ with open(p,"w") as f: json.dump(d, f, indent="\t"); f.write("\n")
 # version bump has to keep the optionalDependencies in lockstep manually.
 write_wrapper_optional_deps_version() {
 	local pj="$1"; local v="$2"
+	# See write_version above for the ensure_ascii=False rationale.
 	python3 -c '
 import json,re,sys
 p=sys.argv[1]; v=sys.argv[2]
@@ -114,7 +118,7 @@ for k in list(deps.keys()):
     if pat.match(k):
         deps[k]=v
 d["optionalDependencies"]=deps
-with open(p,"w") as f: json.dump(d, f, indent="\t"); f.write("\n")
+with open(p,"w",encoding="utf-8") as f: json.dump(d, f, indent="\t", ensure_ascii=False); f.write("\n")
 ' "$pj" "$v"
 }
 
