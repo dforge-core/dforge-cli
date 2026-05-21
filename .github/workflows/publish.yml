@@ -58,6 +58,15 @@ jobs:
           # — and never falls back to the OIDC Trusted Publisher exchange.
           # Default registry is npmjs.org anyway.
 
+      # Install wrapper dev deps so tsup is on PATH for the wrapper's
+      # `prepublishOnly` hook. The 6 sidecar packages have no devDeps and
+      # no hooks, so they don't need this — but the wrapper's npm publish
+      # silently fails without tsup available. --ignore-scripts skips the
+      # optionalDependencies binary download for sidecars (those binaries
+      # come from fetch-binaries.sh below, not from the optionalDeps).
+      - name: Install wrapper dev deps (for tsup)
+        run: pnpm install --ignore-scripts --no-frozen-lockfile
+
       - name: Fetch binaries from source-repo release
         env:
           # Source repo iash44/dForge-core is private and lives under a
