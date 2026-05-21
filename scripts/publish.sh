@@ -138,28 +138,55 @@ for pkg in $ALL_PKGS; do
 done
 ok "all 7 package.json present"
 
-missing_bins=0
-for pkg in $PLATFORM_PKGS; do
-	bin=$(binary_name_for "$pkg")
-	if [ ! -f "$(pkg_dir "$pkg")/bin/$bin" ]; then
-		echo "  ${C_RED}✗${C_OFF} missing $pkg/bin/$bin"
-		missing_bins=$((missing_bins+1))
-	fi
-done
-if [ "$missing_bins" -gt 0 ]; then
-	fail "$missing_bins binary file(s) missing — pass --source-tag <cli-vX.Y.Z> to fetch them"
+# When --only restricts to the wrapper, no binaries are needed (the wrapper
+# ships only dist/cli.js). When --only restricts to a specific sidecar, only
+# that one's binary is needed. Full publish (no --only) requires all 6.
+if [ -n "$ONLY" ]; then
+	BIN_CHECK_PKGS=""
+	case "$ONLY" in
+		dforge-cli-*-*) BIN_CHECK_PKGS="$ONLY" ;;
+		*) ;;  # wrapper: no binaries to check
+	esac
+else
+	BIN_CHECK_PKGS="$PLATFORM_PKGS"
 fi
-ok "all 6 platform binaries present"
+
+if [ -z "$BIN_CHECK_PKGS" ]; then
+	ok "wrapper-only publish — skipping binary check"
+else
+	missing_bins=0
+	for pkg in $BIN_CHECK_PKGS; do
+		bin=$(binary_name_for "$pkg")
+		if [ ! -f "$(pkg_dir "$pkg")/bin/$bin" ]; then
+			echo "  ${C_RED}✗${C_OFF} missing $pkg/bin/$bin"
+			missing_bins=$((missing_bins+1))
+		fi
+	done
+	if [ "$missing_bins" -gt 0 ]; then
+		fail "$missing_bins binary file(s) missing — pass --source-tag <cli-vX.Y.Z> to fetch them"
+	fi
+	count=$(echo "$BIN_CHECK_PKGS" | wc -w | tr -d ' ')
+	ok "$count platform binar$([ "$count" = "1" ] && echo "y" || echo "ies") present"
+fi
 
 # ── 2. Version bump ──────────────────────────────────────────────────
 if [ -n "$NEW_VERSION" ]; then
-	section "Bumping all 7 packages to $NEW_VERSION"
-	for pkg in $ALL_PKGS; do
-		write_version "$(pkg_dir "$pkg")/package.json" "$NEW_VERSION"
-		ok "$pkg → $NEW_VERSION"
-	done
-	write_wrapper_optional_deps_version "$(pkg_dir "$WRAPPER_PKG")/package.json" "$NEW_VERSION"
-	ok "$WRAPPER_PKG optionalDependencies → $NEW_VERSION"
+	if [ -n "$ONLY" ]; then
+		# Targeted publish: bump only the named package; leave the wrapper's
+		# optionalDependencies untouched so it keeps pointing at whatever
+		# sidecar versions are already on the registry.
+		section "Bumping $ONLY to $NEW_VERSION"
+		write_version "$(pkg_dir "$ONLY")/package.json" "$NEW_VERSION"
+		ok "$ONLY → $NEW_VERSION"
+	else
+		section "Bumping all 7 packages to $NEW_VERSION"
+		for pkg in $ALL_PKGS; do
+			write_version "$(pkg_dir "$pkg")/package.json" "$NEW_VERSION"
+			ok "$pkg → $NEW_VERSION"
+		done
+		write_wrapper_optional_deps_version "$(pkg_dir "$WRAPPER_PKG")/package.json" "$NEW_VERSION"
+		ok "$WRAPPER_PKG optionalDependencies → $NEW_VERSION"
+	fi
 fi
 
 # ── 3. Verify version consistency ────────────────────────────────────
@@ -271,10 +298,15 @@ set --
 if [ -n "$OTP" ]; then set -- "$@" --otp "$OTP"; fi
 # Opt-in npm provenance: when this script runs in GitHub Actions with the
 # id-token: write permission, --provenance adds a verifiable link from the
-# npm package back to the workflow run that produced it. Outside CI the flag
-# is a no-op (npm publish ignores it without the OIDC env), so safe to always
-# pass.
-set -- "$@" --provenance
+# npm package back to the workflow run that produced it. npm 11+ errors out
+# ("Automatic provenance generation not supported for provider: null") if
+# --provenance is passed outside a recognised OIDC provider env, so only
+# add it when we can actually exchange a token. ACTIONS_ID_TOKEN_REQUEST_URL
+# is set whenever a workflow grants id-token: write — more precise than
+# checking $CI alone.
+if [ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+	set -- "$@" --provenance
+fi
 for pkg in $PUBLISH_ORDER; do
 	echo
 	echo "  ${C_BOLD}→ @dforge-core/$pkg${C_OFF}"

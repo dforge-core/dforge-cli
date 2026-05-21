@@ -1,30 +1,43 @@
 {
 	"name": "@dforge-core/dforge-cli",
-	"version": "0.1.0-rc.2",
+	"version": "0.1.0-rc.3",
 	"description": "dForge CLI — validate, pack, publish, and install dForge modules. Distributes a single-file native binary per platform via optionalDependencies (esbuild-style).",
 	"license": "MIT",
 	"homepage": "https://github.com/iash44/dForge-core",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/dforge-core/dforge-cli.git"
+		"url": "git+https://github.com/dforge-core/dforge-cli.git"
 	},
 	"bin": {
-		"dforge-cli": "index.js"
+		"dforge-cli": "dist/cli.js"
 	},
 	"files": [
-		"index.js",
+		"dist/",
 		"README.md"
 	],
-	"main": "index.js",
+	"main": "dist/cli.js",
 	"engines": {
 		"node": ">=18"
+	},
+	"scripts": {
+		"build": "tsup",
+		"prepublishOnly": "tsup",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@clack/prompts": "^0.11.0"
+	},
+	"devDependencies": {
+		"@types/node": "^22.10.2",
+		"tsup": "^8.5.1",
+		"typescript": "^6.0.3"
 	},
 	"optionalDependencies": {
 		"@dforge-core/dforge-cli-darwin-arm64": "0.1.0-rc.2",
 		"@dforge-core/dforge-cli-darwin-x64": "0.1.0-rc.2",
-		"@dforge-core/dforge-cli-linux-x64": "0.1.0-rc.2",
 		"@dforge-core/dforge-cli-linux-arm64": "0.1.0-rc.2",
-		"@dforge-core/dforge-cli-win32-x64": "0.1.0-rc.2",
-		"@dforge-core/dforge-cli-win32-arm64": "0.1.0-rc.2"
+		"@dforge-core/dforge-cli-linux-x64": "0.1.0-rc.2",
+		"@dforge-core/dforge-cli-win32-arm64": "0.1.0-rc.2",
+		"@dforge-core/dforge-cli-win32-x64": "0.1.0-rc.2"
 	}
 }

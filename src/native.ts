@@ -1,15 +1,14 @@
-#!/usr/bin/env node
-// Resolve the platform-specific binary package via require.resolve. Mirrors the
-// esbuild distribution model: each supported platform is a separately-published
-// optionalDependency with `os`/`cpu` pins, so npm installs only the right one
-// for the user's machine. Fails fast with a clear message when no binary
-// matches (most often: user is on an unsupported platform, or someone passed
-// --no-optional to npm install).
-const { spawnSync } = require("node:child_process");
-const path = require("node:path");
-const fs = require("node:fs");
+// Resolve the platform-specific binary package via require.resolve. Mirrors
+// the esbuild distribution model: each supported platform is a separately-
+// published optionalDependency with `os`/`cpu` pins, so npm installs only
+// the right one for the user's machine. Fails fast with a clear message
+// when no binary matches (most often: user is on an unsupported platform,
+// or someone passed --no-optional to npm install).
+import { spawnSync } from "node:child_process";
+import * as path from "node:path";
+import * as fs from "node:fs";
 
-const platformMap = {
+const platformMap: Record<string, string> = {
 	"darwin-arm64": "@dforge-core/dforge-cli-darwin-arm64",
 	"darwin-x64": "@dforge-core/dforge-cli-darwin-x64",
 	"linux-x64": "@dforge-core/dforge-cli-linux-x64",
@@ -18,14 +17,16 @@ const platformMap = {
 	"win32-arm64": "@dforge-core/dforge-cli-win32-arm64",
 };
 
-function resolveBinary() {
+export function resolveBinary(): string {
 	// Escape hatch for source-repo / dist-repo maintainers who want to test a
 	// freshly-built binary without going through the publish pipeline.
 	// Honored before anything else.
 	const override = process.env.DFORGE_CLI_BINARY;
 	if (override) {
 		if (!fs.existsSync(override)) {
-			console.error(`dforge-cli: DFORGE_CLI_BINARY points at non-existent path: ${override}`);
+			console.error(
+				`dforge-cli: DFORGE_CLI_BINARY points at non-existent path: ${override}`,
+			);
 			process.exit(1);
 		}
 		return override;
@@ -40,7 +41,7 @@ function resolveBinary() {
 		process.exit(1);
 	}
 
-	let pkgJsonPath;
+	let pkgJsonPath: string;
 	try {
 		pkgJsonPath = require.resolve(`${pkg}/package.json`);
 	} catch {
@@ -50,8 +51,16 @@ function resolveBinary() {
 		// Check that path before bailing. Consumers of the published package
 		// never hit this branch — require.resolve succeeds via npm-installed
 		// node_modules.
-		const shortName = pkg.split("/").pop();
-		const siblingPkgJson = path.join(__dirname, "packages", shortName, "package.json");
+		const shortName = pkg.split("/").pop()!;
+		// __dirname at runtime: dist/ in the published package. Climb one
+		// level to reach the repo root (or the consumer's node_modules root).
+		const siblingPkgJson = path.join(
+			__dirname,
+			"..",
+			"packages",
+			shortName,
+			"package.json",
+		);
 		if (fs.existsSync(siblingPkgJson)) {
 			pkgJsonPath = siblingPkgJson;
 		} else {
@@ -71,8 +80,8 @@ function resolveBinary() {
 		process.exit(1);
 	}
 
-	// Ensure the binary is executable. pnpm/npm tarball-packing has dropped the
-	// +x bit on files outside `bin` fields in some versions, so a freshly-
+	// Ensure the binary is executable. pnpm/npm tarball-packing has dropped
+	// the +x bit on files outside `bin` fields in some versions, so a freshly-
 	// downloaded sidecar can land as 0644 even though the local checkout was
 	// 0755. chmod is idempotent — no-op when already executable — and skipped
 	// on Windows where it has no effect on .exe invocation.
@@ -80,21 +89,22 @@ function resolveBinary() {
 		try {
 			const mode = fs.statSync(binPath).mode;
 			if ((mode & 0o111) === 0) fs.chmodSync(binPath, mode | 0o755);
-		} catch (e) {
-			// Non-fatal: spawnSync below will surface EACCES with a clear message
-			// if chmod failed for an unexpected reason (read-only fs, perms).
+		} catch {
+			// Non-fatal: spawnSync below will surface EACCES with a clear
+			// message if chmod failed for an unexpected reason.
 		}
 	}
 	return binPath;
 }
 
-const result = spawnSync(resolveBinary(), process.argv.slice(2), {
-	stdio: "inherit",
-	shell: false,
-});
-
-if (result.error) {
-	console.error(`dforge-cli: failed to exec binary: ${result.error.message}`);
-	process.exit(1);
+export function spawnNative(argv: string[]): never {
+	const result = spawnSync(resolveBinary(), argv, {
+		stdio: "inherit",
+		shell: false,
+	});
+	if (result.error) {
+		console.error(`dforge-cli: failed to exec binary: ${result.error.message}`);
+		process.exit(1);
+	}
+	process.exit(result.status ?? 1);
 }
-process.exit(result.status ?? 1);

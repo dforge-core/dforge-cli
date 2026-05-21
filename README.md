@@ -17,12 +17,10 @@ macOS arm64/x64, Linux x64/arm64, Windows x64/arm64.
 ## Commands
 
 ```bash
-# STATIC checks: manifest identifiers, translation completeness, menu/folder/entity
-# coverage, folder paths. DB-bound checks (FK target resolution, package-filter SQL,
-# migration safety) only surface during `module install` against a live tenant —
-# a clean `validate` does NOT guarantee a clean install.
-dforge-cli module validate ./my-module
-dforge-cli module validate ./my-module-1.0.0.dforge
+# Scaffold a new module interactively (asks for code/displayName/dependencies/
+# preset/initial entity). Generates manifest with a real UUID, writes the
+# minimum file set so the module installs cleanly.
+dforge-cli init module ./my-module
 
 # Package a module directory into a .dforge archive
 dforge-cli module pack ./my-module                    # writes my-module-1.0.0.dforge in cwd
@@ -32,7 +30,10 @@ dforge-cli module pack ./my-module -o pkg.dforge      # writes ./pkg.dforge
 # Publish a .dforge to the marketplace (org-scoped)
 dforge-cli marketplace publish ./my-module-1.0.0.dforge --org acme
 
-# Install a .dforge (or source directory) to a running tenant over HTTP
+# Install a .dforge (or source directory) to a running tenant over HTTP.
+# Manifest, FK targets, package-filter SQL, and migration safety are all
+# validated server-side during install — first install of a fresh scaffold
+# is the smoke test that catches anything wrong.
 DFORGE_URL=https://app.example.com DFORGE_TOKEN=<jwt> \
 	dforge-cli module install --path ./my-module-1.0.0.dforge
 

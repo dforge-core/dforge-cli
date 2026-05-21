@@ -9,6 +9,10 @@ packages/*/bin/
 node_modules/
 *.tgz
 
+# tsup output — bundled by `pnpm build`, also by `prepublishOnly` in CI
+# right before npm publish, so the published tarball gets a fresh build.
+dist/
+
 # OS / editor
 .DS_Store
 *.swp
