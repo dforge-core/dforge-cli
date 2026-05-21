@@ -41,11 +41,11 @@
 		"typescript": "^6.0.3"
 	},
 	"optionalDependencies": {
-		"@dforge-core/dforge-cli-darwin-arm64": "0.1.0-rc.2",
-		"@dforge-core/dforge-cli-darwin-x64": "0.1.0-rc.2",
-		"@dforge-core/dforge-cli-linux-arm64": "0.1.0-rc.2",
-		"@dforge-core/dforge-cli-linux-x64": "0.1.0-rc.2",
-		"@dforge-core/dforge-cli-win32-arm64": "0.1.0-rc.2",
-		"@dforge-core/dforge-cli-win32-x64": "0.1.0-rc.2"
+		"@dforge-core/dforge-cli-darwin-arm64": "0.1.0-rc.1",
+		"@dforge-core/dforge-cli-darwin-x64": "0.1.0-rc.1",
+		"@dforge-core/dforge-cli-linux-arm64": "0.1.0-rc.1",
+		"@dforge-core/dforge-cli-linux-x64": "0.1.0-rc.1",
+		"@dforge-core/dforge-cli-win32-arm64": "0.1.0-rc.1",
+		"@dforge-core/dforge-cli-win32-x64": "0.1.0-rc.1"
 	}
 }

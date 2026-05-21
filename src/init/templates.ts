@@ -89,17 +89,21 @@ export function buildFolders(opts: ScaffoldOpts): Record<string, unknown> {
 }
 
 export function buildMenus(opts: ScaffoldOpts): Record<string, unknown> {
+	// Schema (and real modules — chore, crm, pm) use `items` keyed by item
+	// code, NOT `children` at the top level. Each item carries its own
+	// `orderNum` (required) and may have nested `children` later.
 	return {
-		[opts.code]: {
+		[`${opts.code}_menu`]: {
 			label: opts.displayName,
-			icon: "bi-folder",
-			children: Object.fromEntries(
-				opts.entities.map((e) => [
+			items: Object.fromEntries(
+				opts.entities.map((e, idx) => [
 					e.name,
 					{
 						itemType: "V",
 						label: e.label,
 						dataViewCode: e.name,
+						orderNum: idx + 1,
+						icon: "table",
 					},
 				]),
 			),
@@ -178,9 +182,11 @@ const SCHEMA_BINDINGS: Array<{ fileMatch: string[]; schema: string }> = [
 	{ fileMatch: ["ui/data_views.json"], schema: "data-views" },
 	{ fileMatch: ["ui/folders.json"], schema: "folders" },
 	{ fileMatch: ["ui/menus.json"], schema: "menus" },
+	{ fileMatch: ["ui/reports.json"], schema: "reports" },
 	{ fileMatch: ["security/roles.json"], schema: "roles" },
 	{ fileMatch: ["logic/jobs.json"], schema: "jobs" },
 	{ fileMatch: ["seed-data/*.json"], schema: "seed-data" },
+	{ fileMatch: ["settings.json"], schema: "settings" },
 ];
 
 export function buildVscodeSettings(): Record<string, unknown> {
