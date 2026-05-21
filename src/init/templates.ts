@@ -156,3 +156,54 @@ export function buildGitignore(): string {
 		"",
 	].join("\n");
 }
+
+// Editor settings binding each module file pattern to its JSON Schema. The
+// schemas live in the @dforge-core/dforge-mcp npm package; jsdelivr serves
+// them at a stable URL so VS Code / Zed / Cursor / IntelliJ / neovim all
+// resolve them without any per-user setup.
+//
+// @latest follows the npm dist-tag, so the schemas auto-update when
+// dforge-mcp is republished. @0 would be safer (locks to major) but
+// npm semver excludes prereleases from bare ranges, so it doesn't
+// resolve while we're still on 0.1.0-rc.* — switch to @0 once the
+// first non-prerelease lands.
+const SCHEMA_BASE =
+	"https://cdn.jsdelivr.net/npm/@dforge-core/dforge-mcp@latest/resources/schemas";
+
+// File-pattern → schema-name mappings. Same map for both editors; the
+// wrapping object shape is what differs.
+const SCHEMA_BINDINGS: Array<{ fileMatch: string[]; schema: string }> = [
+	{ fileMatch: ["manifest.json"], schema: "manifest" },
+	{ fileMatch: ["entities/*.json"], schema: "entity" },
+	{ fileMatch: ["ui/data_views.json"], schema: "data-views" },
+	{ fileMatch: ["ui/folders.json"], schema: "folders" },
+	{ fileMatch: ["ui/menus.json"], schema: "menus" },
+	{ fileMatch: ["security/roles.json"], schema: "roles" },
+	{ fileMatch: ["logic/jobs.json"], schema: "jobs" },
+	{ fileMatch: ["seed-data/*.json"], schema: "seed-data" },
+];
+
+export function buildVscodeSettings(): Record<string, unknown> {
+	return {
+		"json.schemas": SCHEMA_BINDINGS.map((b) => ({
+			fileMatch: b.fileMatch,
+			url: `${SCHEMA_BASE}/${b.schema}.schema.json`,
+		})),
+	};
+}
+
+export function buildZedSettings(): Record<string, unknown> {
+	// Zed uses the same `json.schemas` key under a top-level `languages.JSON`
+	// block per its settings schema. Both editors honour the file from their
+	// project-local config dir without prompting.
+	return {
+		languages: {
+			JSON: {
+				"json.schemas": SCHEMA_BINDINGS.map((b) => ({
+					fileMatch: b.fileMatch,
+					url: `${SCHEMA_BASE}/${b.schema}.schema.json`,
+				})),
+			},
+		},
+	};
+}

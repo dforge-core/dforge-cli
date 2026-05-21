@@ -23,6 +23,8 @@ import {
 	buildTranslations,
 	buildSeedData,
 	buildGitignore,
+	buildVscodeSettings,
+	buildZedSettings,
 } from "./templates";
 import type { EntitySpec, Preset, ScaffoldOpts, Traits } from "./types";
 
@@ -271,6 +273,13 @@ function writeAll(opts: ScaffoldOpts): void {
 	writeJson(path.join(root, "ui", "actions.json"), buildActions());
 	writeJson(path.join(root, "security", "roles.json"), buildRoles(opts));
 	writeText(path.join(root, ".gitignore"), buildGitignore());
+
+	// Editor-bindings: VS Code + Zed pick these up automatically from
+	// their project-local config dirs. JSON Schema URLs resolve via
+	// jsdelivr (no per-user setup, no extension required). See the
+	// comment on SCHEMA_BINDINGS in templates.ts.
+	writeJson(path.join(root, ".vscode", "settings.json"), buildVscodeSettings());
+	writeJson(path.join(root, ".zed", "settings.json"), buildZedSettings());
 
 	// Full preset adds the optional-but-typical files. None are required
 	// for `module validate` to pass; they're there as scaffolding the author
