@@ -72,19 +72,19 @@ export function buildDataViews(
 }
 
 export function buildFolders(opts: ScaffoldOpts): Record<string, unknown> {
+	// folders.json IS the root folder directly (not a map keyed by code).
+	// Matches real-module convention — see folders.schema.json.
 	return {
-		[opts.code]: {
-			label: opts.displayName,
-			description: opts.description || opts.displayName,
-			icon: "bi-folder",
-			color: "#2196F3",
-			entities: Object.fromEntries(
-				opts.entities.map((e) => [
-					e.name,
-					{ viewName: e.name, quickAdd: true },
-				]),
-			),
-		},
+		label: opts.displayName,
+		description: opts.description || opts.displayName,
+		icon: "bi-folder",
+		color: "#2196F3",
+		entities: Object.fromEntries(
+			opts.entities.map((e) => [
+				e.name,
+				{ viewName: "default", quickAdd: true },
+			]),
+		),
 	};
 }
 
