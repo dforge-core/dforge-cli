@@ -8,7 +8,12 @@ name: publish
 #     -f source_tag=cli-v0.1.0-rc.2 \
 #     -f npm_version=0.1.0-rc.2 \
 #     -f npm_tag=next
-# Promote to latest with a second run using -f npm_tag=latest.
+#
+# Promote to latest with a second run using -f npm_tag=latest. publish.sh
+# auto-detects that the version is already published and switches to a
+# promote-only path that just runs `npm dist-tag add` (no republish).
+# Requires NPM_PROMOTE_TOKEN secret — a regular automation token, since
+# `npm dist-tag` doesn't go through the Trusted Publisher OIDC channel.
 
 on:
   workflow_dispatch:
@@ -83,7 +88,21 @@ jobs:
       # for a short-lived publish credential at publish time — no NPM_TOKEN
       # secret needed. Provenance piggybacks on the same OIDC exchange.
       - name: Publish to npm
+        env:
+          # NPM_PROMOTE_TOKEN: automation token used by `npm dist-tag add`
+          # in the promote-only path. Trusted Publisher OIDC does not cover
+          # dist-tag operations, so this token is required only for
+          # promotions (e.g. moving `next` → `latest`). Initial publishes
+          # of a version still use OIDC and don't touch this token. If
+          # unset, only the publish path works; promote-only runs would
+          # fail at the `npm dist-tag add` step.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_PROMOTE_TOKEN }}
         run: |
+          # Write .npmrc only if the token is present, so initial publishes
+          # (OIDC) keep working unchanged when the secret hasn't been added.
+          if [ -n "$NODE_AUTH_TOKEN" ]; then
+            echo "//registry.npmjs.org/:_authToken=\${NODE_AUTH_TOKEN}" > ~/.npmrc
+          fi
           scripts/publish.sh \
             --version "${{ inputs.npm_version }}" \
             --tag "${{ inputs.npm_tag }}" \

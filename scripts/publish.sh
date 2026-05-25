@@ -18,10 +18,18 @@
 # --version rewrites both the wrapper's "version" field AND every entry in
 # its "optionalDependencies" block, keeping all 7 packages in lockstep.
 #
+# Promote-only mode: when --version is set and that version is already on
+# the npm registry, the script auto-skips fetch/bump/publish and just runs
+# `npm dist-tag add` to move the tag pointer (e.g. `next` → `latest`). This
+# is the documented "second run promotes to latest" pattern. Pass
+# --promote-only to force this path without the registry probe.
+#
 # Usage:
 #   scripts/publish.sh --dry-run                                           # preflight + dry-run, no publish, no prompt
 #   scripts/publish.sh --source-tag cli-v0.1.0-rc.2 --version 0.1.0-rc.2   # full flow
 #   scripts/publish.sh --version 0.1.0-rc.3 --tag next                     # bump + publish under `next`
+#   scripts/publish.sh --version 0.1.0-rc.3 --tag latest                   # auto-detects: promote-only (no republish)
+#   scripts/publish.sh --version 0.1.0-rc.3 --tag latest --promote-only    # explicit promote
 #   scripts/publish.sh --version 0.2.0 --tag latest --yes --otp 123456     # non-interactive (CI)
 #   scripts/publish.sh --only dforge-cli                                   # publish only the wrapper
 set -eo pipefail
@@ -50,6 +58,7 @@ NPM_TAG="latest"
 OTP=""
 ONLY=""
 ASSUME_YES=0
+PROMOTE_ONLY=0
 
 usage() {
 	grep -E "^#( |$)" "$0" | sed 's/^# \?//'
@@ -58,15 +67,16 @@ usage() {
 
 while [ $# -gt 0 ]; do
 	case "$1" in
-		--source-tag) SOURCE_TAG="$2"; shift 2 ;;
-		--dry-run)    DRY_RUN=1; shift ;;
-		--version)    NEW_VERSION="$2"; shift 2 ;;
-		--tag)        NPM_TAG="$2"; shift 2 ;;
-		--otp)        OTP="$2"; shift 2 ;;
-		--only)       ONLY="$2"; shift 2 ;;
-		--yes)        ASSUME_YES=1; shift ;;
-		-h|--help)    usage ;;
-		*)            echo "Unknown argument: $1" >&2; echo "See: $0 --help" >&2; exit 1 ;;
+		--source-tag)   SOURCE_TAG="$2"; shift 2 ;;
+		--dry-run)      DRY_RUN=1; shift ;;
+		--version)      NEW_VERSION="$2"; shift 2 ;;
+		--tag)          NPM_TAG="$2"; shift 2 ;;
+		--otp)          OTP="$2"; shift 2 ;;
+		--only)         ONLY="$2"; shift 2 ;;
+		--yes)          ASSUME_YES=1; shift ;;
+		--promote-only) PROMOTE_ONLY=1; shift ;;
+		-h|--help)      usage ;;
+		*)              echo "Unknown argument: $1" >&2; echo "See: $0 --help" >&2; exit 1 ;;
 	esac
 done
 
@@ -128,6 +138,56 @@ binary_name_for() {
 		*)       echo dforge-cli ;;
 	esac
 }
+
+# ── 0a. Auto-detect "version already published" → switch to promote-only ──
+# A second workflow run with the same --version but a different --tag is the
+# documented promote pattern (publish as `next` first, then run again with
+# --tag latest). `npm publish` rejects republishing the same version, so
+# without this check the second run errors out. Detect early: if the wrapper
+# version is already on the registry, skip fetch/bump/publish and just run
+# `npm dist-tag add` to move the tag pointer. Explicit --promote-only also
+# triggers this path without the version probe (useful when the registry
+# query is slow or you know the answer).
+if [ -n "$NEW_VERSION" ] && [ "$PROMOTE_ONLY" -eq 0 ]; then
+	if npm view "@dforge-core/$WRAPPER_PKG@$NEW_VERSION" version >/dev/null 2>&1; then
+		section "Detected $NEW_VERSION already on npm — switching to promote-only mode"
+		echo "  (skipping fetch/bump/publish; will run npm dist-tag add → $NPM_TAG)"
+		PROMOTE_ONLY=1
+	fi
+fi
+
+# ── 0b. Promote-only short-circuit: change the dist-tag pointer, exit ────
+# npm dist-tag uses a normal user/automation token (not Trusted Publisher
+# OIDC), so this path needs $NODE_AUTH_TOKEN or an existing `npm login`.
+# The workflow exports NPM_TOKEN when running promote-only.
+if [ "$PROMOTE_ONLY" -eq 1 ]; then
+	if [ -z "$NEW_VERSION" ]; then
+		fail "--promote-only requires --version <X.Y.Z> (the version already on npm to point --tag at)"
+	fi
+	section "Promoting @dforge-core/* @ $NEW_VERSION → dist-tag '$NPM_TAG'"
+	# Promote the wrapper + every sidecar so they stay aligned. `npm install -g`
+	# only consults the wrapper's dist-tag (sidecars resolve via the wrapper's
+	# pinned optionalDependencies), but tidiness keeps `npm view` results sane
+	# and avoids "wait, why does this sidecar still say `next`?" confusion.
+	for pkg in $ALL_PKGS; do
+		printf "  → @dforge-core/%-34s " "$pkg"
+		if [ "$DRY_RUN" -eq 1 ]; then
+			echo "${C_DIM}(dry-run — would run: npm dist-tag add @dforge-core/$pkg@$NEW_VERSION $NPM_TAG)${C_OFF}"
+		elif npm dist-tag add "@dforge-core/$pkg@$NEW_VERSION" "$NPM_TAG" >/dev/null 2>&1; then
+			echo "${C_GREEN}✓${C_OFF}"
+		else
+			echo "${C_RED}✗${C_OFF}"
+			fail "  npm dist-tag add failed for @dforge-core/$pkg@$NEW_VERSION"
+		fi
+	done
+	echo
+	if [ "$DRY_RUN" -eq 1 ]; then
+		ok "Promotion dry-run complete. Re-run without --dry-run to actually move the tag."
+	else
+		ok "Promotion complete. Verify: npm view @dforge-core/$WRAPPER_PKG dist-tags"
+	fi
+	exit 0
+fi
 
 # ── 0. Optional: fetch binaries from source-repo release ─────────────
 if [ -n "$SOURCE_TAG" ]; then
