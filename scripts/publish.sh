@@ -195,6 +195,14 @@ if [ -n "$SOURCE_TAG" ]; then
 	"$SCRIPT_DIR/fetch-binaries.sh" "$SOURCE_TAG"
 fi
 
+# ── 0c. Generate the sidecar package.json from the platform table ────
+# Sidecars are pure boilerplate (only name/os/cpu differ) so they're generated
+# here rather than hand-maintained. The version is read back from the binary
+# (or validated against --version when given); the resolved version flows into
+# the wrapper bump + consistency check below.
+NEW_VERSION="$("$SCRIPT_DIR/generate-sidecars.sh" ${NEW_VERSION:+--version "$NEW_VERSION"})"
+ok "sidecars generated @ $NEW_VERSION"
+
 # ── 1. Pre-flight ────────────────────────────────────────────────────
 section "Pre-flight"
 for pkg in $ALL_PKGS; do

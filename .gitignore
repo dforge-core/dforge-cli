@@ -21,3 +21,7 @@ dist/
 # CI / local scratch
 .env
 .env.local
+
+# Sidecar package.json are generated at publish time by
+# scripts/generate-sidecars.sh from the platform table — never commit them.
+packages/dforge-cli-*/package.json
