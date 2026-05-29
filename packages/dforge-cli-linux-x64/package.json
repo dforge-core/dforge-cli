@@ -1,6 +1,6 @@
 {
 	"name": "@dforge-core/dforge-cli-linux-x64",
-	"version": "0.1.0-rc.2",
+	"version": "0.1.5",
 	"description": "Linux x64 binary for @dforge-core/dforge-cli. Not installed directly — see the parent package.",
 	"license": "MIT",
 	"repository": {
