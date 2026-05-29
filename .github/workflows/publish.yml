@@ -6,8 +6,11 @@ name: publish
 #   gh workflow run publish.yml \
 #     --repo dforge-core/dforge-cli \
 #     -f source_tag=cli-v0.1.0-rc.2 \
-#     -f npm_version=0.1.0-rc.2 \
 #     -f npm_tag=next
+#
+# npm_version is optional: omit it and the version is derived from the fetched
+# binary (dforge-cli --version). Pass -f npm_version=X.Y.Z only to override or
+# pin explicitly — it's then validated against the binary.
 #
 # Promote to latest with a second run using -f npm_tag=latest. publish.sh
 # auto-detects that the version is already published and switches to a
@@ -23,8 +26,8 @@ on:
         required: true
         type: string
       npm_version:
-        description: 'npm version to publish, e.g. 0.1.0-rc.2'
-        required: true
+        description: 'npm version (leave blank to derive from the binary)'
+        required: false
         type: string
       npm_tag:
         description: 'npm dist-tag'
@@ -103,7 +106,11 @@ jobs:
           if [ -n "$NODE_AUTH_TOKEN" ]; then
             echo "//registry.npmjs.org/:_authToken=\${NODE_AUTH_TOKEN}" > ~/.npmrc
           fi
-          scripts/publish.sh \
-            --version "${{ inputs.npm_version }}" \
-            --tag "${{ inputs.npm_tag }}" \
-            --yes
+          # npm_version is optional: when blank, publish.sh + generate-sidecars.sh
+          # derive the version from the fetched binary. When set, it's passed
+          # through and validated against the binary.
+          ARGS=(--tag "${{ inputs.npm_tag }}" --yes)
+          if [ -n "${{ inputs.npm_version }}" ]; then
+            ARGS=(--version "${{ inputs.npm_version }}" "${ARGS[@]}")
+          fi
+          scripts/publish.sh "${ARGS[@]}"
