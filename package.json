@@ -1,6 +1,6 @@
 {
 	"name": "@dforge-core/dforge-cli",
-	"version": "0.1.5",
+	"version": "0.2.2",
 	"description": "dForge CLI - validate, pack, publish, and install dForge modules. Distributes a single-file native binary per platform via optionalDependencies (esbuild-style).",
 	"license": "MIT",
 	"homepage": "https://github.com/iash44/dForge-core",
