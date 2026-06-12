@@ -26,5 +26,6 @@ function printHelp(): void {
 	console.log("Usage: dforge-cli init <subcommand>");
 	console.log("");
 	console.log("Subcommands:");
-	console.log("  module <path>    Scaffold a new dForge module (interactive)");
+	console.log("  module <path>    Scaffold a new dForge module. Interactive with a TTY;");
+	console.log("                   non-interactive with --code (see `init module --help`).");
 }

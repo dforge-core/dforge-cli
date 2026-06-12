@@ -21,11 +21,11 @@ function jsCommand(
 
 if (argv[0] === "init") {
 	jsCommand(() => import("./init/index").then((m) => m.runInit), argv.slice(1));
-} else if (argv[0] === "module" && argv[1] === "pack") {
-	// `module pack` is JS-only — pure zip operation, no need to spin up the
-	// .NET runtime or talk to a DB. Every other `module <subcommand>` (install,
-	// uninstall, list, export, …) still goes to the native binary.
-	jsCommand(() => import("./pack").then((m) => m.runPack), argv.slice(2));
 } else {
+	// Everything else — including `module pack` — goes to the native binary.
+	// `module pack` archives in-process (.NET ZipFile.CreateFromDirectory), so
+	// it never depends on a `zip` executable being installed. (It used to be a
+	// JS detour that shelled out to `zip`, which broke on Windows / anywhere
+	// `zip` wasn't on PATH.)
 	spawnNative(argv);
 }

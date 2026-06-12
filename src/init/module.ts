@@ -33,14 +33,24 @@ const CANCEL_EXIT = 130;
 /**
  * Entry point for `dforge-cli init module <path>`.
  * Returns the process exit code.
+ *
+ * Runs interactively (clack prompts) ONLY when attached to a TTY and no
+ * scaffold flags were given. Otherwise it's fully non-interactive, driven by
+ * flags + defaults — so callers without a TTY (the VS Code extension, CI,
+ * piped shells) never block on stdin that will never arrive. A non-TTY context
+ * with no `--code` is a hard, fast error rather than an indefinite hang.
  */
 export async function runInitModule(argv: string[]): Promise<number> {
-	const rawPath = argv[0];
-	if (!rawPath) {
-		console.error("Usage: dforge-cli init module <path>");
+	const args = parseArgs(argv);
+	if (args.help) {
+		printModuleHelp();
+		return 0;
+	}
+	if (!args.path) {
+		printModuleHelp();
 		return 2;
 	}
-	const absPath = path.resolve(rawPath);
+	const absPath = path.resolve(args.path);
 
 	// Reject existing non-empty dirs upfront — before any prompts — so the
 	// author doesn't sit through five minutes of questions to discover their
@@ -57,26 +67,50 @@ export async function runInitModule(argv: string[]): Promise<number> {
 		}
 	}
 
-	p.intro("dforge-cli init module");
+	// Interactive only when we have a TTY to prompt on AND the caller didn't
+	// already supply identity flags. `--code`, `--yes`, or "no TTY" all force
+	// the non-interactive path so we never block on stdin that never arrives.
+	const nonInteractive =
+		args.yes || args.code !== undefined || !process.stdin.isTTY;
 
-	const opts = await collectOpts(absPath);
-	if (opts === null) {
-		p.cancel("Aborted.");
-		return CANCEL_EXIT;
+	let opts: ScaffoldOpts | null;
+	if (nonInteractive) {
+		if (args.code === undefined) {
+			console.error(
+				"dforge-cli init module: no TTY for interactive prompts and no --code given.\n" +
+					"Pass --code <code> (plus optional --display-name, --entity, --preset, …) to scaffold\n" +
+					"non-interactively, or run in a real terminal. See `dforge-cli init module --help`.",
+			);
+			return 2;
+		}
+		opts = buildOptsFromArgs(absPath, args);
+		if (opts === null) return 1; // a validation error was already printed
+		try {
+			writeAll(opts);
+		} catch (err) {
+			console.error((err as Error).message);
+			return 1;
+		}
+		console.log(`Created module ${opts.code} at ${opts.path}`);
+	} else {
+		p.intro("dforge-cli init module");
+		opts = await collectOpts(absPath);
+		if (opts === null) {
+			p.cancel("Aborted.");
+			return CANCEL_EXIT;
+		}
+		const s = p.spinner();
+		s.start("Writing files");
+		try {
+			writeAll(opts);
+			s.stop("Files written.");
+		} catch (err) {
+			s.stop("Write failed.");
+			console.error((err as Error).message);
+			return 1;
+		}
+		p.outro(`Created module ${opts.code} at ${opts.path}`);
 	}
-
-	const s = p.spinner();
-	s.start("Writing files");
-	try {
-		writeAll(opts);
-		s.stop("Files written.");
-	} catch (err) {
-		s.stop("Write failed.");
-		console.error((err as Error).message);
-		return 1;
-	}
-
-	p.outro(`Created module ${opts.code} at ${opts.path}`);
 
 	// NOTE: post-scaffold validation is intentionally not run here. The C#
 	// CLI's only validator (`studio validate`) needs a live tenant DB
@@ -91,6 +125,167 @@ export async function runInitModule(argv: string[]): Promise<number> {
 	console.log(`  cd ${path.relative(process.cwd(), opts.path) || "."}`);
 	console.log(`  dforge-cli module install --path . --code <tenant>`);
 	return 0;
+}
+
+/** Parsed `init module` invocation: positional path + scaffold flags. */
+interface InitArgs {
+	path?: string;
+	code?: string;
+	displayName?: string;
+	description?: string;
+	author?: string;
+	license?: string;
+	version?: string;
+	dbSchemaVersion?: string;
+	dependencies?: string[];
+	preset?: string;
+	/** Entity names; each becomes one entity with default label + traits. */
+	entities?: string[];
+	traits?: string;
+	yes?: boolean;
+	help?: boolean;
+}
+
+/**
+ * Minimal flag parser for `init module`. Supports `--flag value` and
+ * `--flag=value`; `--entity` and `--dependencies` accept comma lists and/or
+ * repetition. The first non-flag token is the target path.
+ */
+function parseArgs(argv: string[]): InitArgs {
+	const out: InitArgs = {};
+	const list = (prev: string[] | undefined, v: string): string[] => [
+		...(prev ?? []),
+		...v.split(",").map((s) => s.trim()).filter(Boolean),
+	];
+
+	for (let i = 0; i < argv.length; i++) {
+		const tok = argv[i];
+		if (tok === "--help" || tok === "-h") {
+			out.help = true;
+			continue;
+		}
+		if (tok === "--yes" || tok === "-y") {
+			out.yes = true;
+			continue;
+		}
+		if (!tok.startsWith("-")) {
+			if (out.path === undefined) out.path = tok;
+			continue;
+		}
+		// Normalize --flag=value into (flag, value); otherwise consume next token.
+		const eq = tok.indexOf("=");
+		const flag = eq === -1 ? tok : tok.slice(0, eq);
+		const inlineVal = eq === -1 ? undefined : tok.slice(eq + 1);
+		const value = (): string =>
+			inlineVal !== undefined ? inlineVal : (argv[++i] ?? "");
+		switch (flag) {
+			case "--code": out.code = value(); break;
+			case "--display-name":
+			case "--name": out.displayName = value(); break;
+			case "--description": out.description = value(); break;
+			case "--author": out.author = value(); break;
+			case "--license": out.license = value(); break;
+			case "--version": out.version = value(); break;
+			case "--db-schema-version": out.dbSchemaVersion = value(); break;
+			case "--dependencies": out.dependencies = list(out.dependencies, value()); break;
+			case "--preset": out.preset = value(); break;
+			case "--entity": out.entities = list(out.entities, value()); break;
+			case "--traits": out.traits = value(); break;
+			default:
+				console.error(`dforge-cli init module: unknown flag "${flag}" (ignored)`);
+		}
+	}
+	return out;
+}
+
+const PRESETS: ReadonlySet<string> = new Set(["minimal", "minimal-plus", "full"]);
+const TRAITS_VALUES: ReadonlySet<string> = new Set(["identity+audit", "identity"]);
+
+/**
+ * Build scaffold options from flags + defaults, with the SAME validation the
+ * interactive prompts enforce. Returns null (after printing a clear message)
+ * on any invalid input. Defaults mirror the interactive initial values, so
+ * `init module <path> --code foo` yields the same minimal scaffold a user gets
+ * by accepting every prompt default.
+ */
+function buildOptsFromArgs(absPath: string, args: InitArgs): ScaffoldOpts | null {
+	const fail = (msg: string): null => {
+		console.error(`dforge-cli init module: ${msg}`);
+		return null;
+	};
+
+	const code = args.code!;
+	const codeErr = validateCode(code);
+	if (codeErr) return fail(`--code ${codeErr}`);
+
+	const version = args.version ?? "0.1.0";
+	const versionErr = validateSemver(version);
+	if (versionErr) return fail(`--version ${versionErr}`);
+
+	const dbSchemaVersion = args.dbSchemaVersion ?? "0.0.1";
+	const dbErr = validateSemver(dbSchemaVersion);
+	if (dbErr) return fail(`--db-schema-version ${dbErr}`);
+
+	const preset = args.preset ?? "minimal";
+	if (!PRESETS.has(preset)) {
+		return fail(`--preset must be one of: ${[...PRESETS].join(", ")}.`);
+	}
+
+	const traits = args.traits ?? "identity+audit";
+	if (!TRAITS_VALUES.has(traits)) {
+		return fail(`--traits must be one of: ${[...TRAITS_VALUES].join(", ")}.`);
+	}
+
+	// At least one entity is required for a valid scaffold. Default to a single
+	// "item" entity when none were named — same shape the interactive flow's
+	// first-entity prompt yields, just with a sensible default name.
+	const names =
+		args.entities && args.entities.length > 0 ? args.entities : ["item"];
+	const entities: EntitySpec[] = [];
+	for (const name of names) {
+		const nameErr = validateEntityName(name);
+		if (nameErr) return fail(`--entity "${name}": ${nameErr}`);
+		entities.push({ name, label: titlecase(name), traits: traits as Traits });
+	}
+
+	const displayName = args.displayName ?? titlecase(code);
+	if (validateNonEmpty(displayName)) return fail("--display-name cannot be empty.");
+
+	return {
+		path: absPath,
+		code,
+		displayName,
+		description: args.description ?? "",
+		author: args.author ?? tryGitUserName() ?? "",
+		license: args.license ?? "MIT",
+		version,
+		dbSchemaVersion,
+		dependencies: args.dependencies ?? ["admin", "metadata"],
+		preset: preset as Preset,
+		entities,
+	};
+}
+
+function printModuleHelp(): void {
+	console.log("Usage: dforge-cli init module <path> [options]");
+	console.log("");
+	console.log("Scaffold a new dForge module. With a TTY and no flags, runs interactively.");
+	console.log("With --code (or when there's no TTY), runs non-interactively from flags + defaults.");
+	console.log("");
+	console.log("Options:");
+	console.log("  --code <code>              Module code (required when non-interactive)");
+	console.log("  --display-name <name>      Default: title-cased code");
+	console.log("  --description <text>       Default: empty");
+	console.log("  --author <name>            Default: git user.name");
+	console.log("  --license <id>             Default: MIT");
+	console.log("  --version <semver>         Default: 0.1.0");
+	console.log("  --db-schema-version <ver>  Default: 0.0.1");
+	console.log("  --dependencies <a,b>       Default: admin,metadata");
+	console.log("  --preset <p>               minimal | minimal-plus | full  (default: minimal)");
+	console.log("  --entity <name[,name…]>    Entities to scaffold (default: item). Repeatable.");
+	console.log("  --traits <t>               identity+audit | identity  (default: identity+audit)");
+	console.log("  -y, --yes                  Force non-interactive even with a TTY");
+	console.log("  -h, --help                 Show this help");
 }
 
 /**
