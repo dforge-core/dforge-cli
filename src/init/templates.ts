@@ -43,13 +43,29 @@ export function buildEntity(entity: EntitySpec): Entity {
 		? ["identity", "audit"]
 		: ["identity"];
 
-	return {
+	const built: Entity = {
 		description: entity.label,
 		dbObject: entity.name,
 		toString: "{id}",
 		traits,
 		fields: {},
 	};
+
+	if (entity.constraints?.length) {
+		built.constraints = Object.fromEntries(
+			entity.constraints.map((c) => {
+				const def: Record<string, unknown> = { type: c.type ?? "check" };
+				if (c.expression !== undefined) def.expression = c.expression;
+				if (c.fields !== undefined) def.fields = c.fields;
+				// The `message` is the base (en-US) text; a per-locale override in
+				// translations/<locale>.json localizes it.
+				def.message = c.message;
+				return [c.name, def];
+			}),
+		);
+	}
+
+	return built;
 }
 
 export function buildDataViews(
@@ -132,16 +148,65 @@ export function buildSettings(): Record<string, unknown> {
 
 export function buildTranslations(
 	opts: ScaffoldOpts,
-): Record<string, string> {
-	const t: Record<string, string> = {};
-	t[`module.${opts.code}.label`] = opts.displayName;
-	if (opts.description) t[`module.${opts.code}.description`] = opts.description;
+): Record<string, unknown> {
+	// The runtime TranslationRegistrar reads the NESTED structure — entities
+	// (+ nested fields / constraints), folders, roles, views, menus. Emitting the
+	// flat `entity.<x>.label` shape (older scaffold) meant labels were never
+	// applied. Mirror the shape real modules ship (see docs `translations.md`).
+	const entities: Record<string, unknown> = {};
 	for (const e of opts.entities) {
-		t[`entity.${e.name}.label`] = e.label;
-		t[`view.${e.name}.label`] = e.label;
-		t[`menu.${e.name}.label`] = e.label;
+		const fields: Record<string, unknown> = {
+			// identity trait → primary key column
+			[`${e.name}_id`]: { label: `${e.label} ID` },
+		};
+		if (e.traits === "identity+audit") {
+			// audit trait → timestamp columns (see @dforge-core/metadata traits)
+			fields.created_date = { label: "Created Date" };
+			fields.last_updated = { label: "Last Updated" };
+		}
+
+		const entityEntry: Record<string, unknown> = { label: e.label };
+		if (opts.description && opts.entities.length === 1) {
+			// Single-entity modules: reuse the module description as the entity desc
+			// so authors see where desc goes; multi-entity modules leave it blank.
+			entityEntry.desc = opts.description;
+		}
+		entityEntry.fields = fields;
+
+		// Localizable check/unique constraint violation messages (opt-in). The
+		// message here is the en-US base; add per-locale overrides in the other
+		// translations/<locale>.json files to localize.
+		if (e.constraints?.length) {
+			entityEntry.constraints = Object.fromEntries(
+				e.constraints.map((c) => [c.name, { message: c.message }]),
+			);
+		}
+
+		entities[e.name] = entityEntry;
 	}
-	return t;
+
+	return {
+		entities,
+		folders: {
+			// folders.json root folder key is the module code (see buildFolders).
+			[opts.code]: { label: opts.displayName },
+		},
+		roles: {
+			// Role labels are completeness-enforced in every locale incl. en-US.
+			[`${opts.code}.admin`]: { label: `${opts.displayName} Administrator` },
+		},
+		views: Object.fromEntries(
+			opts.entities.map((e) => [e.name, { label: e.label }]),
+		),
+		menus: {
+			[`${opts.code}_menu`]: {
+				label: opts.displayName,
+				items: Object.fromEntries(
+					opts.entities.map((e) => [e.name, { label: e.label }]),
+				),
+			},
+		},
+	};
 }
 
 export function buildSeedData(): unknown[] {

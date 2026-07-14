@@ -1,10 +1,22 @@
 export type Preset = "minimal" | "minimal-plus" | "full";
 export type Traits = "identity" | "identity+audit";
 
+export interface ConstraintSpec {
+	name: string;                       // constraint code, e.g. "chk_qty_positive"
+	type?: "check" | "unique";
+	expression?: string;                // for check constraints
+	fields?: string[];                  // for unique constraints
+	message: string;                    // base (en-US) violation message — localizable
+}
+
 export interface EntitySpec {
 	name: string;
 	label: string;
 	traits: Traits;
+	// Optional check/unique constraints. When present, buildEntity emits them
+	// into the entity JSON and buildTranslations emits a localizable
+	// `constraints.<name>.message` under the entity (opt-in localization).
+	constraints?: ConstraintSpec[];
 }
 
 export interface ScaffoldOpts {
@@ -45,6 +57,7 @@ export interface Entity {
 	toString: string;
 	traits: string[];
 	fields: Record<string, unknown>;
+	constraints?: Record<string, unknown>;
 }
 
 export interface DataView {
