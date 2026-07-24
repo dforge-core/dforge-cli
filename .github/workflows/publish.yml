@@ -106,11 +106,17 @@ jobs:
           if [ -n "$NODE_AUTH_TOKEN" ]; then
             echo "//registry.npmjs.org/:_authToken=\${NODE_AUTH_TOKEN}" > ~/.npmrc
           fi
-          # npm_version is optional: when blank, publish.sh + generate-sidecars.sh
-          # derive the version from the fetched binary. When set, it's passed
-          # through and validated against the binary.
-          ARGS=(--tag "${{ inputs.npm_tag }}" --yes)
-          if [ -n "${{ inputs.npm_version }}" ]; then
-            ARGS=(--version "${{ inputs.npm_version }}" "${ARGS[@]}")
+          # Always resolve a concrete version and pass it through. When
+          # npm_version is blank we derive it from source_tag (cli-vX.Y.Z →
+          # X.Y.Z) rather than leaving it unset. This is what makes a promote
+          # run work: publish.sh's "already on npm → promote-only" auto-detect
+          # (§0a) only fires when it has a version to probe, so an unset version
+          # silently fell through to a full republish. On a REAL publish the
+          # derived version is still asserted against the binary's self-reported
+          # version by generate-sidecars.sh, so a tag/binary mismatch fails loud.
+          VERSION="${{ inputs.npm_version }}"
+          if [ -z "$VERSION" ]; then
+            VERSION="${{ inputs.source_tag }}"
+            VERSION="${VERSION#cli-v}"
           fi
-          scripts/publish.sh "${ARGS[@]}"
+          scripts/publish.sh --version "$VERSION" --tag "${{ inputs.npm_tag }}" --yes

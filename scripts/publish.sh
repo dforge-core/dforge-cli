@@ -164,6 +164,13 @@ if [ "$PROMOTE_ONLY" -eq 1 ]; then
 	if [ -z "$NEW_VERSION" ]; then
 		fail "--promote-only requires --version <X.Y.Z> (the version already on npm to point --tag at)"
 	fi
+	# `npm dist-tag add` authenticates with a normal token, NOT Trusted
+	# Publisher OIDC. In CI the workflow only writes ~/.npmrc when the
+	# NPM_PROMOTE_TOKEN secret is set — without it every dist-tag call 401s
+	# with a confusing error. Fail up front with the actual fix instead.
+	if [ "$DRY_RUN" -eq 0 ] && [ -n "${CI:-}" ] && ! grep -qs '_authToken' ~/.npmrc; then
+		fail "promote needs an npm auth token, but none is configured. Add the NPM_PROMOTE_TOKEN repo secret to dforge-core/dforge-cli (a classic 'Automation' token with publish rights) — npm dist-tag does not go through the Trusted Publisher OIDC channel that initial publishes use."
+	fi
 	section "Promoting @dforge-core/* @ $NEW_VERSION → dist-tag '$NPM_TAG'"
 	# Promote the wrapper + every sidecar so they stay aligned. `npm install -g`
 	# only consults the wrapper's dist-tag (sidecars resolve via the wrapper's
