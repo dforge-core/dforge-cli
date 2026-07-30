@@ -176,14 +176,24 @@ if [ "$PROMOTE_ONLY" -eq 1 ]; then
 	# only consults the wrapper's dist-tag (sidecars resolve via the wrapper's
 	# pinned optionalDependencies), but tidiness keeps `npm view` results sane
 	# and avoids "wait, why does this sidecar still say `next`?" confusion.
+	# --otp applies here too, not just to `npm publish`: an account with 2FA on
+	# publish is prompted for a code by dist-tag as well, and this path is
+	# non-interactive, so without the flag it fails with EOTP. One code covers all
+	# seven calls — they run inside its validity window.
+	PROMOTE_ARGS=""
+	if [ -n "$OTP" ]; then PROMOTE_ARGS="--otp $OTP"; fi
 	for pkg in $ALL_PKGS; do
 		printf "  → @dforge-core/%-34s " "$pkg"
 		if [ "$DRY_RUN" -eq 1 ]; then
 			echo "${C_DIM}(dry-run — would run: npm dist-tag add @dforge-core/$pkg@$NEW_VERSION $NPM_TAG)${C_OFF}"
-		elif npm dist-tag add "@dforge-core/$pkg@$NEW_VERSION" "$NPM_TAG" >/dev/null 2>&1; then
+		# shellcheck disable=SC2086  # word-splitting of PROMOTE_ARGS is intentional
+		elif out=$(npm dist-tag add "@dforge-core/$pkg@$NEW_VERSION" "$NPM_TAG" $PROMOTE_ARGS 2>&1); then
 			echo "${C_GREEN}✓${C_OFF}"
 		else
 			echo "${C_RED}✗${C_OFF}"
+			# npm's own message, not just a bare ✗. Swallowing it turned "needs a
+			# 2FA code" (EOTP) into an unactionable failure.
+			echo "$out" | sed 's/^/      /' >&2
 			fail "  npm dist-tag add failed for @dforge-core/$pkg@$NEW_VERSION"
 		fi
 	done
