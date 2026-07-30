@@ -39,10 +39,15 @@ if [ "${1:-}" = "--version" ]; then
 fi
 
 # Read the version the binary self-reports, when a runnable one is present.
+# `-x` only means the execute bit is set, not that THIS host can run the file:
+# on the Linux publish runner it can, but a dev on macOS gets "cannot execute
+# binary file" and, under `set -e`, that killed the whole publish script. So the
+# run is allowed to fail and BIN_VERSION simply stays empty — the assertion
+# below still fires wherever the binary really is runnable.
 BIN="$REPO_ROOT/packages/dforge-cli-linux-x64/bin/dforge-cli"
 BIN_VERSION=""
 if [ -x "$BIN" ]; then
-	BIN_VERSION="$("$BIN" --version | sed -n 's/^dForge\.Cli \([^ ]*\).*/\1/p')"
+	BIN_VERSION="$("$BIN" --version 2>/dev/null | sed -n 's/^dForge\.Cli \([^ ]*\).*/\1/p' || true)"
 fi
 
 if [ -n "$VERSION_OVERRIDE" ]; then
