@@ -10,6 +10,64 @@ release corresponds to a `cli-vX.Y.Z` tag in that repo. Because `pack`, `validat
 and `install` share the platform's module loader/installer, most CLI behaviour
 changes ride along with the shared services — noted below per release.
 
+## [0.2.10] — 2026-08-04
+
+### Changed
+
+- **The `M` (mandatory) column flag now means required.** It was documented as
+  "mandatory" but read by nothing, so a column declared `"flags": "VEM"` installed
+  nullable and saved empty. `pack` / `validate` / `install` now fold it into
+  `isNullable: false` after trait expansion, and **declaring `M` alongside
+  `"isNullable": true` is a hard error** naming the entity and every offending field
+  — a contradiction only the author can resolve. `M` stays inert on virtual
+  (`R`/`S`/`F`) and identity columns: a Reference is required when its hidden FK is,
+  so the flag belongs on the FK.
+- **`install` reconciles column nullability in both directions on upgrade.**
+  Previously neither direction reached an existing table — `ADD COLUMN IF NOT EXISTS`
+  no-ops on a column that is already there, and the only nullability statement emitted
+  was `DROP NOT NULL`, and that only for an explicit `isNullable: true`. So adding `M`
+  to a shipped field did nothing on tenants that already had the module (it worked on
+  a fresh install, which goes through `CREATE TABLE`), and merely deleting `M` left
+  the constraint standing, failing later inserts with a raw Postgres 23502.
+  - **An upgrade now aborts when existing rows contradict a newly required column**,
+    rolled back inside the install transaction, naming each column and its NULL row
+    count — rather than committing a tenant whose API enforces a rule its data already
+    breaks. Give the column a `params.serverDefault` and the install backfills it
+    instead; where there are no NULL rows, which is the common case, the constraint
+    lands silently.
+  - Relaxing is unconditional and never fails, so removing `M` is always safe.
+- **A required column with a `params.serverDefault` is no longer demanded of the
+  caller** on insert, alongside `formula` and `numberSequence`. An `on: "update"`
+  default still is — it does not fire on insert.
+
+### Added
+
+- **`server defaults` static check** at `pack` / `validate` — rejects a
+  `params.serverDefault` whose `value` isn't `now()` / `currentUser()` or whose `on`
+  isn't `insert` / `update` / `save`. The runtime reads that phase in two places (does
+  the INSERT supply the value; must the caller), and both mapped an unrecognised phase
+  to `insert`, so a typo silently picked a behaviour instead of failing the build.
+
+### Fixed
+
+- **`M` and `serverDefault` on a bridge module's extension columns were skipped
+  entirely** — both passes walked only the schema's own entities, so an extension
+  column never resolved its `M`, and a module consisting solely of extensions was not
+  checked at all.
+- **Column defaults no longer pass author-supplied `formula` text through to SQL.**
+  A `bool` default returned the formula verbatim, and the string branch tested only
+  that it started and ended with a quote — so `'a'; DROP TABLE t; --'` reached
+  `CREATE`/`ALTER TABLE ... DEFAULT` intact. Both now emit a proven literal or no
+  default at all.
+- **`install-system` / `upgrade-system` carry the `metadata` system module at 1.3.2**,
+  correcting three entity definitions that claimed `isNullable: false` on columns the
+  physical schema deliberately leaves nullable (`print_template.entity_id` — a snippet
+  has no entity; `saved_query.user_id` — module-owned queries have no user;
+  `module_install_log.module_id` — `ON DELETE SET NULL`). They made the generic data
+  API reject legitimate writes.
+
+_Corresponds to `cli-v0.2.10` in `dForge-core`. Previous release: 0.2.9 (2026-07-30)._
+
 ## [0.2.9] — 2026-07-30
 
 ### Added
