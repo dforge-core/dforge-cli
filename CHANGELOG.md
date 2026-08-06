@@ -10,6 +10,61 @@ release corresponds to a `cli-vX.Y.Z` tag in that repo. Because `pack`, `validat
 and `install` share the platform's module loader/installer, most CLI behaviour
 changes ride along with the shared services — noted below per release.
 
+## [0.2.11] — 2026-08-06
+
+### Added
+
+- **`currentUserId()`** — a call-shaped way to read the acting user's id in
+  `execute:`. `pack` / `validate` / `install` accept it alongside the bare
+  `userId` identifier, which is unchanged and still works. It exists because
+  `userId` was effectively undiscoverable: a bare identifier with no
+  parentheses, documented in a single table row and absent from the reference
+  an author actually reads, so reaching for a function was the natural move and
+  every guess (`current_user_id()`, `CURRENT_USER_ID()`, `userId()`) failed.
+  - `CURRENT_USER_ID()` is a **formula** function — valid in `canExecute:`,
+    formula columns, filters and reports, and undefined in `execute:`, exactly
+    like `TODAY()`/`NOW()` versus `now()`. That split is now documented rather
+    than discovered.
+
+### Changed
+
+- **`userId()` — the value spelled as a call — is now a hard error at `pack`.**
+  It previously passed `pack` *and* `install`: the compiler's bare-identifier
+  rewrite fires with or without parentheses, so it became `__ctx.userId()`,
+  which is syntactically valid JavaScript whose root identifier is a known
+  global. Nothing rejected it and the action only failed the first time it ran,
+  with `Property 'userId' of object is not a function` — a message naming
+  neither the DSL line nor the fix. The error now names both working spellings:
+
+  ```
+  line 1: 'userId' is a value, not a function — write 'userId' without
+  parentheses, or 'currentUserId()'
+  ```
+
+  Actions already installed from an older CLI are not recompiled, so the API
+  translates the same failure at run time until they are re-packed.
+
+### Fixed
+
+- **System-module upgrades no longer print ~22 bogus orphan-column warnings.**
+  Every `admin` / `metadata` version bump emitted ready-to-paste
+  `ALTER TABLE ... DROP COLUMN` statements against columns the platform reads on
+  every request — `entity_column.storage_table`, `user.is_dev`,
+  `user.auth_user_id`, `sec_object.max_rights`,
+  `webhook_subscription.condition_parsed`. The install itself succeeded, so the
+  noise *was* the defect: 22 standing false positives that would bury a real
+  orphan, and whose suggested DDL would have broken the tenant. The scan is now
+  scoped to tables the running install actually generated, because a schema is
+  not an ownership boundary for system modules — `admin` and `metadata` share
+  the `dForge` schema.
+
+### Note
+
+The 64-bit id precision work in this release cycle (ids reach `execute:` as JS
+BigInt and stay exact) lives in the **runtime engine**, not in the CLI's
+dependency closure. It ships with the API, not with `pack` / `validate` /
+`install`, and needs no CLI update.
+
 ## [0.2.10] — 2026-08-04
 
 ### Changed
