@@ -12,6 +12,11 @@
 #   7. If not --dry-run and not --yes: prompt for confirmation, then publish
 #   8. Post-publish verify against the registry
 #
+# 2FA: --otp is optional. If npm asks for a one-time code (EOTP) the script
+# prompts for one on the terminal and retries that package, reusing the code
+# for the remaining packages and re-prompting if it expires mid-run. In CI
+# there is no terminal, so --otp is still required there when 2FA is enforced.
+#
 # Sidecars publish FIRST so the wrapper's optionalDependencies all resolve
 # the moment the wrapper hits the registry. The wrapper's optionalDependencies
 # use literal versions (no `workspace:*` — this repo has no pnpm workspace);
@@ -30,7 +35,7 @@
 #   scripts/publish.sh --version 0.1.0-rc.3 --tag next                     # bump + publish under `next`
 #   scripts/publish.sh --version 0.1.0-rc.3 --tag latest                   # auto-detects: promote-only (no republish)
 #   scripts/publish.sh --version 0.1.0-rc.3 --tag latest --promote-only    # explicit promote
-#   scripts/publish.sh --version 0.2.0 --tag latest --yes --otp 123456     # non-interactive (CI)
+#   scripts/publish.sh --version 0.2.0 --tag latest --yes --otp 123456     # non-interactive (CI); locally the code is prompted for
 #   scripts/publish.sh --only dforge-cli                                   # publish only the wrapper
 set -eo pipefail
 
@@ -90,6 +95,41 @@ fi
 section() { echo; echo "${C_BOLD}── $1 ──${C_OFF}"; }
 ok()      { echo "  ${C_GREEN}✓${C_OFF} $1"; }
 fail()    { echo "  ${C_RED}✗${C_OFF} $1" >&2; exit 1; }
+
+# ── 2FA one-time codes ───────────────────────────────────────────────
+# npm asks for a 2FA code whenever the account (or the package) has 2FA
+# enforced for writes. Passing --otp up front only works if you already know
+# that and can type a code before its ~30s window closes — so instead every
+# npm write runs first, and if npm answers EOTP we prompt on the terminal and
+# retry. The code is cached in $OTP so the remaining packages reuse it inside
+# its validity window; if it expires mid-run the next failure just prompts
+# again. CI has no terminal, so there --otp (or a token without 2FA) is still
+# the only way through, and a missing code fails with npm's own message.
+NPM_LOG="$(mktemp "${TMPDIR:-/tmp}/dforge-publish.XXXXXX")"
+trap 'rm -f "$NPM_LOG"' EXIT
+
+otp_prompt_available() {
+	[ -z "${CI:-}" ] && [ -e /dev/tty ]
+}
+
+# Does this npm failure output mean "give me a 2FA code"? Covers both the
+# missing case (EOTP) and the wrong/expired case (E401 + "one-time password").
+is_otp_error() {
+	grep -qiE 'EOTP|one-time pass|otp[- ]?code|invalid (or expired )?otp' "$1"
+}
+
+# Reads a code from the controlling terminal (stdin may be a pipe). Echoes
+# the code on stdout; empty means the user declined.
+read_otp() {
+	local code=""
+	{
+		echo
+		echo "  ${C_BOLD}npm wants a 2FA one-time code${C_OFF} for $1"
+		printf "  Code (leave blank to abort): "
+	} > /dev/tty
+	read -r code < /dev/tty
+	printf '%s' "$code" | tr -d '[:space:]'
+}
 
 # JSON-aware version helpers (python3 instead of regex over sed — the
 # optionalDependencies block contains version-like strings).
@@ -176,26 +216,34 @@ if [ "$PROMOTE_ONLY" -eq 1 ]; then
 	# only consults the wrapper's dist-tag (sidecars resolve via the wrapper's
 	# pinned optionalDependencies), but tidiness keeps `npm view` results sane
 	# and avoids "wait, why does this sidecar still say `next`?" confusion.
-	# --otp applies here too, not just to `npm publish`: an account with 2FA on
-	# publish is prompted for a code by dist-tag as well, and this path is
-	# non-interactive, so without the flag it fails with EOTP. One code covers all
-	# seven calls — they run inside its validity window.
-	PROMOTE_ARGS=""
-	if [ -n "$OTP" ]; then PROMOTE_ARGS="--otp $OTP"; fi
+	# 2FA applies here too, not just to `npm publish`: an account with 2FA on
+	# publish is asked for a code by dist-tag as well. Locally the EOTP retry
+	# below prompts for it; in CI --otp is the only channel.
 	for pkg in $ALL_PKGS; do
 		printf "  → @dforge-core/%-34s " "$pkg"
 		if [ "$DRY_RUN" -eq 1 ]; then
 			echo "${C_DIM}(dry-run — would run: npm dist-tag add @dforge-core/$pkg@$NEW_VERSION $NPM_TAG)${C_OFF}"
-		# shellcheck disable=SC2086  # word-splitting of PROMOTE_ARGS is intentional
-		elif out=$(npm dist-tag add "@dforge-core/$pkg@$NEW_VERSION" "$NPM_TAG" $PROMOTE_ARGS 2>&1); then
-			echo "${C_GREEN}✓${C_OFF}"
-		else
+			continue
+		fi
+		while :; do
+			# shellcheck disable=SC2086  # word-splitting of the --otp pair is intentional
+			if npm dist-tag add "@dforge-core/$pkg@$NEW_VERSION" "$NPM_TAG" ${OTP:+--otp $OTP} >"$NPM_LOG" 2>&1; then
+				echo "${C_GREEN}✓${C_OFF}"
+				break
+			fi
+			if is_otp_error "$NPM_LOG" && otp_prompt_available; then
+				echo "${C_DIM}needs 2FA${C_OFF}"
+				OTP=$(read_otp "@dforge-core/$pkg")
+				[ -n "$OTP" ] || fail "promote aborted — no 2FA code entered"
+				printf "  → @dforge-core/%-34s " "$pkg"
+				continue
+			fi
 			echo "${C_RED}✗${C_OFF}"
 			# npm's own message, not just a bare ✗. Swallowing it turned "needs a
 			# 2FA code" (EOTP) into an unactionable failure.
-			echo "$out" | sed 's/^/      /' >&2
+			sed 's/^/      /' "$NPM_LOG" >&2
 			fail "  npm dist-tag add failed for @dforge-core/$pkg@$NEW_VERSION"
-		fi
+		done
 	done
 	echo
 	if [ "$DRY_RUN" -eq 1 ]; then
@@ -383,8 +431,7 @@ fi
 
 # ── 7. Publish ───────────────────────────────────────────────────────
 section "Publishing"
-set --
-if [ -n "$OTP" ]; then set -- "$@" --otp "$OTP"; fi
+PUBLISH_ARGS=""
 # Opt-in npm provenance: when this script runs in GitHub Actions with the
 # id-token: write permission, --provenance adds a verifiable link from the
 # npm package back to the workflow run that produced it. npm 11+ errors out
@@ -394,12 +441,25 @@ if [ -n "$OTP" ]; then set -- "$@" --otp "$OTP"; fi
 # is set whenever a workflow grants id-token: write — more precise than
 # checking $CI alone.
 if [ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
-	set -- "$@" --provenance
+	PUBLISH_ARGS="--provenance"
 fi
 for pkg in $PUBLISH_ORDER; do
 	echo
 	echo "  ${C_BOLD}→ @dforge-core/$pkg${C_OFF}"
-	publish_one "$pkg" "$@" | sed 's/^/    /'
+	while :; do
+		# tee keeps npm's progress streaming to the terminal while retaining a
+		# copy to inspect for EOTP. pipefail makes npm's failure the pipeline's.
+		# shellcheck disable=SC2086  # word-splitting of the arg strings is intentional
+		if publish_one "$pkg" $PUBLISH_ARGS ${OTP:+--otp $OTP} | tee "$NPM_LOG" | sed 's/^/    /'; then
+			break
+		fi
+		if is_otp_error "$NPM_LOG" && otp_prompt_available; then
+			OTP=$(read_otp "@dforge-core/$pkg")
+			[ -n "$OTP" ] || fail "publish aborted — no 2FA code entered"
+			continue
+		fi
+		fail "npm publish failed for @dforge-core/$pkg"
+	done
 done
 
 # ── 8. Verify ────────────────────────────────────────────────────────
