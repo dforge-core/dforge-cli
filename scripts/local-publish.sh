@@ -22,7 +22,8 @@
 # Examples:
 #   scripts/local-publish.sh 0.2.0                          # publish to `next` tag (default)
 #   scripts/local-publish.sh 0.2.0 --tag latest             # promote to `latest`
-#   scripts/local-publish.sh 0.2.0 --otp 123456             # if your npm account has 2FA on publish
+#   scripts/local-publish.sh 0.2.0 --otp 123456             # optional: pass a 2FA code up front instead
+#                                                           # of waiting to be prompted for one
 #   scripts/local-publish.sh 0.2.0 --dry-run                # see what would happen
 #   scripts/local-publish.sh 0.2.0 --yes                    # skip confirmation prompt
 #
