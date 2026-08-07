@@ -10,6 +10,61 @@ release corresponds to a `cli-vX.Y.Z` tag in that repo. Because `pack`, `validat
 and `install` share the platform's module loader/installer, most CLI behaviour
 changes ride along with the shared services — noted below per release.
 
+## [0.2.12] — 2026-08-07
+
+### Changed
+
+- **`install` now rejects a filter that uses an operator the runtime can't
+  translate.** It used to accept one and the damage showed up later, silently:
+  `FilterBuilder` drops a condition it can't translate and logs it, so the
+  surviving query runs **wider** than what the module author wrote. For a data
+  view that means rows the view was meant to hide; for a folder's `rowFilter` it
+  means the row-level security that filter exists to enforce isn't being
+  enforced. Nothing failed, so nothing prompted a second look. Install is the
+  last point where this is still cheap to fix, so it is now fatal there.
+
+  The operator set was never documented anywhere authoritative — the `o` field in
+  the `data_views` / `reports` / `folders` schemas had no `enum`, and its
+  description listed operators that **do not exist**: `isNull`, `isNotNull`,
+  `neq`, `gt`, `gte`, `lt`, `lte`, `like`. Modules were written against that list.
+  The real spellings for the ones most often invented:
+
+  | Invented | Actual |
+  |---|---|
+  | `isNull` / `isNotNull` | `null` / `!null` |
+  | `like` | `contains` (or `mask`) |
+  | `neq`, `gt`, `gte`, `lt`, `lte` | `!=`, `>`, `>=`, `<`, `<=` |
+
+  The rejection names the offending path, and for the common misspellings above
+  it suggests the correct operator rather than only listing all valid ones.
+  Checked everywhere a module can declare a filter: folder `rowFilter`, a data
+  view's global `filter` and each `dataSources[].filter`, and both report query
+  filter paths.
+
+- **Group combinators (`g`) are validated the same way**, for the same reason: an
+  unrecognized combinator fell back to AND at query time, quietly turning an OR
+  group into an AND one. Valid: `and`, `or`, `!and`/`nAnd`, `!or`/`nOr`.
+
+### Fixed
+
+- **A dropped filter condition is now attributable.** The old warning named
+  neither the entity nor which filter the condition came from, so it could mean a
+  user typed something odd in a grid, a module ships a broken data view, or a
+  folder's row-level-security filter isn't being applied — three very different
+  problems, one unactionable line. Warnings now carry the entity and the filter's
+  origin (`request`, `rowFilter`, or `filter` for DSL `select()` and internal
+  queries). Diagnostics only — no change to the emitted SQL.
+
+### Known gap
+
+- `pack` and `validate` do **not** run the operator check — it lives in the
+  install-time package validator, so a module with a bad operator packs and
+  validates clean and only fails at `install`. The check needs no database, so it
+  could move earlier; until it does, don't treat a green `validate` as proof the
+  filters are sound. Editors are the earlier net in the meantime: the `o` `enum`
+  shipped in `@dforge-core/metadata` 0.0.13, so a schema-aware editor flags an
+  invented operator as you type it.
+
 ## [0.2.11] — 2026-08-06
 
 ### Added
