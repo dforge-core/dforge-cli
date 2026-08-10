@@ -10,6 +10,97 @@ release corresponds to a `cli-vX.Y.Z` tag in that repo. Because `pack`, `validat
 and `install` share the platform's module loader/installer, most CLI behaviour
 changes ride along with the shared services — noted below per release.
 
+## [0.2.13] — 2026-08-10
+
+### Added
+
+- **Dropdown param options carry labels.** A `dropdown` action or report
+  parameter had nowhere to put a per-choice label: `options=` deserialized to a
+  `string[]`, so a code was the only thing that could be stored, and the
+  translation reader only ever looked at `params.<cd>.label`. Every locale —
+  English included — showed raw codes (`bank_transfer`, `cash`) in the parameter
+  dialog, even though the same values read correctly once written onto the
+  record. `options=` now takes the same `{value, label, icon, color}` shape an
+  entity column stores:
+
+  ```
+  params:
+      payment_method: dropdown options=[bank_transfer:Bank transfer, cash:Cash]
+  ```
+
+  The JSON object form works too. Bare `options=a,b,c` still yields plain
+  strings, so nothing already installed changes. Per-locale overrides live under
+  `actions.<cd>.params.<param_cd>.options` in the module's translation files (and
+  the reports equivalent), merged at load.
+
+- **A param can borrow a column domain.** `payment_method: domain payment_method`
+  in the action DSL, or `"domain": "payment_method"` on a report param, points
+  the parameter at a column domain instead of restating its list. A list shared
+  with the column the value is eventually written to is now authored and
+  translated once rather than twice and left to drift. Both bare (`payment_method`)
+  and module-qualified (`fin.payment_method`) codes resolve. Install materializes
+  only the domain's `fieldTypeCd` — a param has no storage — and the options plus
+  their translations resolve through the FK, never copied onto the param.
+
+### Changed
+
+- **New fail-loud rejections at `pack` / `install`**, all naming the action or
+  report param they came from:
+  - a param declaring both `domain` and `fieldTypeCd` (the domain supplies the
+    control, so the installer would otherwise have to pick a winner silently);
+  - a `domain` that doesn't resolve, or resolves to a domain declaring no
+    `fieldTypeCd`;
+  - trailing constraints on a domain param, and a malformed
+    `paramCd: domain <domainCd>` line;
+  - an entry in `options=` that is neither a string nor an object with a
+    non-empty `value` — an option that could never round-trip.
+- **The domain reap guard names params too.** Removing a column domain that a
+  param still references now fails the upgrade with the referencing param
+  listed, the same way a referencing column already did.
+- **A report param may omit `fieldTypeCd` entirely** — it installs as `text`
+  (`ReportRegistrar.DefaultParamFieldTypeCd`). Only declaring *both* keys is
+  rejected. `@dforge-core/metadata` 0.0.14 ships the matching schema and types.
+
+### Fixed
+
+- **`uninstall` left param rows behind.** `ModuleUninstaller` never deleted them,
+  so a leftover param holding a domain blocked that domain's `DELETE` later in
+  the same uninstall. Params, presets, sets and per-param resources are now
+  cleaned up, guarded against implementations shared with another module.
+- **Identity primary keys installed as nullable when a module used the `M` flag.**
+  `M` is folded into `isNullable` by `MandatoryFlagNormalizer`, which deliberately
+  skips identity columns — the user is never asked for one. So a definition that
+  dropped its explicit `"isNullable": false` in favour of the flag installed its
+  identity PK with `is_nullable` NULL, `EntityMetadata.IdentityColumns` (which
+  required an explicit `false`) dropped it, and `data.insert` omitted the PK,
+  killing the row on the `NOT NULL` a primary key implies. An omitted nullability
+  now counts as required; only an explicit `isNullable: true` opts out.
+- **`install-system` / `upgrade-system` now create `record_subscription`.** The
+  table landed in `tenant-schema.sql` (fresh provisioning) and in the legacy
+  `server/database/migrations/` directory, which has no runtime consumer — so
+  every tenant provisioned before it was added had no table and
+  `RecordWatchService` failed with `42P01` on every write. The admin
+  system-module migration that was never written now exists (admin `1.13.0`).
+- **Cyclic-hierarchy errors name the column that closed the loop.** The
+  acyclic-guard trigger raises with PG's SCHEMA/TABLE/COLUMN fields alongside a
+  dedicated SQLSTATE, so the failing reference column reaches the client instead
+  of an entity-only "cannot be its own parent". The depth cap got its own
+  SQLSTATE (`DF002`) so an over-deep-but-valid tree is no longer reported as a
+  record parenting itself. Already-provisioned tenants get the new messages
+  without a module bump.
+
+### System modules
+
+Installing or upgrading with this CLI moves a tenant to:
+
+| Module | manifest | dbSchemaVersion |
+|---|---|---|
+| `admin` | 1.13.0 | 1.13.0 |
+| `metadata` | 1.4.0 | 1.3.0 |
+
+`metadata` 1.3.0 adds `dForge.param.domain_id` (FK → `column_domain`, partial
+index); `admin` 1.13.0 adds `record_subscription`.
+
 ## [0.2.12] — 2026-08-07
 
 ### Changed

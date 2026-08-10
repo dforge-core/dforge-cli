@@ -1,6 +1,6 @@
 {
 	"name": "@dforge-core/dforge-cli",
-	"version": "0.2.12",
+	"version": "0.2.13",
 	"description": "dForge CLI - validate, pack, publish, and install dForge modules. Distributes a single-file native binary per platform via optionalDependencies (esbuild-style).",
 	"license": "MIT",
 	"homepage": "https://github.com/dforge-core/dforge-cli",
@@ -41,11 +41,11 @@
 		"typescript": "^6.0.3"
 	},
 	"optionalDependencies": {
-		"@dforge-core/dforge-cli-darwin-arm64": "0.2.12",
-		"@dforge-core/dforge-cli-darwin-x64": "0.2.12",
-		"@dforge-core/dforge-cli-linux-arm64": "0.2.12",
-		"@dforge-core/dforge-cli-linux-x64": "0.2.12",
-		"@dforge-core/dforge-cli-win32-arm64": "0.2.12",
-		"@dforge-core/dforge-cli-win32-x64": "0.2.12"
+		"@dforge-core/dforge-cli-darwin-arm64": "0.2.13",
+		"@dforge-core/dforge-cli-darwin-x64": "0.2.13",
+		"@dforge-core/dforge-cli-linux-arm64": "0.2.13",
+		"@dforge-core/dforge-cli-linux-x64": "0.2.13",
+		"@dforge-core/dforge-cli-win32-arm64": "0.2.13",
+		"@dforge-core/dforge-cli-win32-x64": "0.2.13"
 	}
 }
