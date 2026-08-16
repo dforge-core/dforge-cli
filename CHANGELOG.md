@@ -10,6 +10,118 @@ release corresponds to a `cli-vX.Y.Z` tag in that repo. Because `pack`, `validat
 and `install` share the platform's module loader/installer, most CLI behaviour
 changes ride along with the shared services — noted below per release.
 
+## [0.2.14] — 2026-08-13
+
+### Added
+
+- **`module validate` / `module pack` check record-report attachments.** A report
+  in `ui/reports.json` can attach itself to an entity so it opens from a record,
+  with the record's values feeding its parameters:
+
+  ```jsonc
+  "credit_check": {
+      "entities": [
+          { "entityCd": "parties.party", "params": { "customer_id": "party_id" }, "orderNum": 45 }
+      ]
+  }
+  ```
+
+  The installer has always rejected a malformed attachment, but only against a
+  live tenant — so the loop was pack → publish → install → read the error. These
+  checks need nothing but the package, and now run in the shared static-validation
+  phase (`ReportAttachmentValidator`), which `validate`, `pack` and install's own
+  static phase all go through:
+
+  - a mapped parameter code that neither the report-level `parameters` block nor
+    any dataset declares;
+  - a source column the entity doesn't have, or one that is a set / formula /
+    free-text / json column;
+  - a source and target whose types aren't compatible (only `lookup`↔`number` and
+    `date`↔`datetime` widen), so `{ "customer_id": "created_date" }` is an error
+    rather than an empty result set at runtime;
+  - two attachments to the same entity in one report — the unique key is
+    `(entity, report)`, so the second silently overwrites the first's mapping;
+  - a cross-module `entityCd` whose module isn't a declared dependency.
+
+  Column-level checks run where the package owns the target entity; a
+  cross-module target still falls through to install, which can resolve it. The
+  allowlist and type rules are shared with the installer rather than restated, so
+  a source `validate` accepts is never one `install` rejects.
+
+- **Report parameters have a report-level home.** A parameter is report-scoped in
+  the platform — the declaration is stored once per report
+  (`report.param_set_id` → `param_set`), and `report.get` flattens per-dataset
+  defaults report-wide before use — but the module loader had only ever read the
+  per-dataset shorthand. A report-level `parameters` block was therefore dropped
+  by the deserializer and the report installed with **no parameters at all**, its
+  `@param` filters comparing against nothing.
+
+  Both declaration sites are now legal and mean the same thing; the loader merges
+  them into the report's single parameter set, **report level winning** on a code
+  collision:
+
+  ```jsonc
+  "customer_statement": {
+      "parameters": {
+          "customer_id": { "label": "Customer", "fieldTypeCd": "lookup",
+                           "params": { "link": { "entity": "parties.party" } }, "required": true }
+      },
+      "datasets": { "statement_invoices": { }, "statement_payments": { } }
+  }
+  ```
+
+  Declare at report level when several datasets use the parameter — there is no
+  meaningful dataset to attribute it to, which is why `module export` previously
+  had to dump the whole set onto "the first dataset that had params".
+  `datasets.<cd>.params` stays fully supported for a single-dataset parameter, and
+  every module written before this keeps installing unchanged.
+
+- **`reloadInterval`** (a report's auto-refresh, in seconds) is in the schema. It
+  has always worked, but the report object is `additionalProperties: false`, so
+  setting it was a validation error.
+
+### Fixed
+
+- **`module export` produced an unimportable `reports.json` when two datasets had
+  parameter defaults.** Parameters were written onto one arbitrarily chosen
+  dataset; the others kept `report_ds.params`' raw `{code: value}` map under
+  `params`, where re-import expects a parameter *definition* per code. Parameters
+  now export at report level, with each default folded into its definition, so a
+  round-trip through export → install is faithful.
+
+- **Two report-parameter spellings that were accepted and then ignored.** Unlike
+  `parameters` these are simply misspellings of keys that already exist, so they
+  are gone from the schema rather than implemented:
+
+  - **`isRequired`** — the key is `required`; the parameter installed as optional.
+  - **top-level `link`** on a lookup parameter — it belongs under `params`; the
+    parameter installed with no autocomplete.
+
+  Both are now flagged by `module validate` at either declaration site. Two shipped
+  platform modules (`crm-fin`, `wms-fin`) were affected and have been corrected.
+
+- **Report-level parameter labels are translation-checked.** The completeness
+  validator collected parameter codes from datasets only, so a report-level
+  parameter's `reports.<cd>.params.<cd>.label` would have gone unenforced. It now
+  reads the same merged set the loader builds.
+
+### System modules
+
+Installing or upgrading with this CLI moves a tenant to:
+
+| Module | manifest | dbSchemaVersion |
+|---|---|---|
+| `admin` | 1.13.0 | 1.13.0 |
+| `metadata` | 1.5.0 | 1.4.0 |
+
+`metadata` 1.4.0 adds `dForge.entity_report` (the record-report attachment table)
+plus its `entity_report.json` metadata entity.
+
+**A module attaching a report declares `"metadata": ">=1.5.0"`** — the *manifest*
+column. Dependency ranges are checked against a module's `version`, never its
+`dbSchemaVersion`, so quoting the migration's number (`>=1.4.0`) would be
+satisfied by metadata 1.4.x, which has no `entity_report` table.
+
 ## [0.2.13] — 2026-08-10
 
 ### Added
