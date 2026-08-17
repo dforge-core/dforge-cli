@@ -37,6 +37,14 @@
 #   scripts/publish.sh --version 0.1.0-rc.3 --tag latest --promote-only    # explicit promote
 #   scripts/publish.sh --version 0.2.0 --tag latest --yes --otp 123456     # non-interactive (CI); locally the code is prompted for
 #   scripts/publish.sh --only dforge-cli                                   # publish only the wrapper
+#   scripts/publish.sh --version 0.2.15 --allow-unverified-binary          # skip the baked-in-version check (see below)
+#
+# --allow-unverified-binary is an escape hatch for step 1's version check.
+# Normally --version is asserted against the version baked into a staged binary
+# that this host can execute; if binaries are staged but none of them run here,
+# the publish stops rather than shipping an unverified version. Pass this flag
+# only when you know the mismatch is fine (e.g. cross-building for a platform
+# you can't execute locally).
 set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -64,6 +72,7 @@ OTP=""
 ONLY=""
 ASSUME_YES=0
 PROMOTE_ONLY=0
+ALLOW_UNVERIFIED_BINARY=0
 
 usage() {
 	grep -E "^#( |$)" "$0" | sed 's/^# \?//'
@@ -80,6 +89,7 @@ while [ $# -gt 0 ]; do
 		--only)         ONLY="$2"; shift 2 ;;
 		--yes)          ASSUME_YES=1; shift ;;
 		--promote-only) PROMOTE_ONLY=1; shift ;;
+		--allow-unverified-binary) ALLOW_UNVERIFIED_BINARY=1; shift ;;
 		-h|--help)      usage ;;
 		*)              echo "Unknown argument: $1" >&2; echo "See: $0 --help" >&2; exit 1 ;;
 	esac
@@ -262,10 +272,14 @@ fi
 
 # ── 0c. Generate the sidecar package.json from the platform table ────
 # Sidecars are pure boilerplate (only name/os/cpu differ) so they're generated
-# here rather than hand-maintained. The version is read back from the binary
-# (or validated against --version when given); the resolved version flows into
-# the wrapper bump + consistency check below.
-NEW_VERSION="$("$SCRIPT_DIR/generate-sidecars.sh" ${NEW_VERSION:+--version "$NEW_VERSION"})"
+# here rather than hand-maintained. The version is read back from a staged
+# binary (or validated against --version when given); the resolved version
+# flows into the wrapper bump + consistency check below. This is the step that
+# stops a version bump from shipping an older build than it claims, so it exits
+# non-zero unless --allow-unverified-binary is passed.
+# shellcheck disable=SC2086  # word-splitting of the optional flag pairs is intentional
+NEW_VERSION="$("$SCRIPT_DIR/generate-sidecars.sh" ${NEW_VERSION:+--version "$NEW_VERSION"} \
+	$([ "$ALLOW_UNVERIFIED_BINARY" -eq 1 ] && echo --allow-unverified-binary))"
 ok "sidecars generated @ $NEW_VERSION"
 
 # ── 1. Pre-flight ────────────────────────────────────────────────────
