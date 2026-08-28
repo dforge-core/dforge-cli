@@ -10,6 +10,177 @@ release corresponds to a `cli-vX.Y.Z` tag in that repo. Because `pack`, `validat
 and `install` share the platform's module loader/installer, most CLI behaviour
 changes ride along with the shared services — noted below per release.
 
+## [0.2.16] — 2026-08-28
+
+### Added
+
+- **Roll-up (`G`) columns are maintained by the database, on every write path.** A
+  Generated column whose formula is a set aggregate installs as a trigger on the
+  child table:
+
+  ```jsonc
+  "reserved_qty": {
+      "columnType": "G",
+      "dbDatatype": "numeric(18,2)",
+      "fieldTypeCd": "number",
+      "flags": "V",
+      "formula": "SUM([reservations].[active_qty])"
+  }
+  ```
+
+  The generator was already emitting these; this release makes them correct under
+  everything that actually happens to a parent row:
+
+  - **Composite keys.** The parent side used to be addressed by the first PK column,
+    so a two-column key updated every row sharing the first component. Both sides now
+    pair column for column off the set link's declared keys, and a composite key whose
+    link does not name `thisKey` is skipped with a warning instead of being paired
+    against the parent's field-declaration order — two independently authored sequences
+    that emit a silently wrong tuple comparison when they disagree. A link whose halves
+    do not pair column for column is skipped and named too.
+  - **One trigger per link, not per table pair.** Two FKs from one child into the same
+    parent (`task.creator_id`, `task.approver_id` → `employee`) produced one trigger
+    name: the second `CREATE OR REPLACE` took over the first's body and one roll-up went
+    permanently stale, silently. Colliding names now fall back to a hash of the full link
+    identity, names a previous install may have created are dropped, and a name that is
+    already unique is left alone so an upgrade doesn't orphan a working trigger.
+  - **Concurrency.** The recompute locks its parents `FOR NO KEY UPDATE` in a separate,
+    ordered statement before the `UPDATE` — under READ COMMITTED a lone
+    `SET col = (SELECT SUM(…))` re-reads only the row it updates and stores a partial sum
+    when a sibling child commits underneath it. `FOR NO KEY UPDATE` rather than
+    `FOR UPDATE`, because the child's own FK holds `KEY SHARE` on the parent and would
+    deadlock against the insert that fired the trigger.
+  - **A parent that loses its last child is corrected too** (correlated subquery, not a
+    `GROUP BY` join), and a child moved between parents recomputes both.
+  - **Install re-derives every parent row**, once per parent rather than once per link, so
+    a roll-up introduced on an existing tenant starts correct instead of starting at
+    whatever the module's logic had last written.
+
+  Together with a check constraint over the roll-up, an invariant the module's actions
+  used to have to remember — "reserved never exceeds on hand" — is enforced by the
+  database on the UI, API, DSL and raw-SQL paths alike.
+
+- **`constraints` has a schema, and a check constraint can name the fields to
+  highlight.**
+
+  ```jsonc
+  "chk_reserved_within_quantity": {
+      "type": "check",
+      "expression": "reserved_qty <= quantity",
+      "fields": ["reserved_qty", "quantity"],
+      "message": "Reservations cannot exceed the on-hand quantity"
+  }
+  ```
+
+  `fields` on a `check` does not build the constraint — it travels with the violation so
+  the client can point at the right inputs. The expression is never parsed for this: an
+  identifier inside a string literal is indistinguishable from a column name. On a
+  `unique` constraint `fields` **is** the key, and `expression` has no meaning.
+  `@dforge-core/metadata` 0.0.22 ships the matching schema.
+
+  Authoring note: a module's check constraint is added **without** `NOT VALID`, so an
+  upgrade fails outright on a tenant that already holds rows violating it. Clean the data
+  first — the install is a transaction, so nothing lands until it can.
+
+- **`install` warns when a constraint spells its key columns `columns`.** `columns` is a
+  deprecated alias for `fields`, read only on a `unique` constraint and only as a
+  fallback; a `check` never reads it. The install still succeeds and the warning names
+  the file to edit:
+
+  ```
+  ⚠ 1 constraint(s) declare key columns as "columns"; rename to "fields":
+     entities/warehouse.json  →  constraints.UQ_warehouse_code.columns
+  ```
+
+- **`studio export` writes entity views.** Both exporters wrote fields and constraints
+  and no `views`, while the folder export kept emitting `entities.<code>.viewName` — so
+  an exported package named a view it did not contain, and reinstalling it dropped the
+  folder back to the entity's **full** column set. Export now round-trips `entity_view`
+  and `entity_v_column`, preserves empty overrides (`flags: ""` deliberately suppresses
+  the entity-level value; only SQL NULL means "inherit"), and runs the installer's own
+  validators over what it is about to write.
+
+### Changed
+
+- **A folder entity binding an entity view the entity does not declare now fails at
+  `pack` / `validate`** (`FolderViewBindingValidator`, in the shared static phase), not
+  only against a live tenant. Every published `parties` package was un-installable for
+  exactly this reason.
+- **New fail-loud rejections at `install`:**
+  - a column code starting with `_` — the prefix is reserved for app URL parameters
+    (`_layout`) and print-context keys (`_fmt`, `_raw`, `_color`, `_link`, `_today`,
+    `_settings`);
+  - an entity view that cannot be resolved, which used to fall back to the entity's full
+    column set. Every entity-view failure now fails closed.
+- **`M` works on an entity-view column override**, and view-name matching is
+  case-insensitive. Installed views are wired into `folder_entity`.
+- **Numeric field types no longer carry `min`/`max` defaults** (`metadata` 1.6.0).
+  `field_type.def_params` shipped `{min: 0, max: 10000}` for `number`,
+  `{min: 0, max: 1000000}` for `currency` and `{min: 0, max: 100}` for `percent`, and the
+  client merges those *under* the column's own params before validating on save — so
+  every plain `number` column in every module silently refused negatives and anything
+  over 10000, with nothing in the column's own spec to explain it. A numeric column is
+  bounded only when its own `params` say so. Fixes #947.
+- **The developer capability is granted per user** — `"dForge"."user".is_dev`, set by a
+  tenant admin, combined with tenant-admin status by the server.
+
+### Fixed
+
+- **A menu's `folders` array silently created zero folders**, leaving the module's menu
+  attached nowhere.
+- **A report dataset could bind to another module's entity of the same code.**
+  `entity_cd` is not unique per tenant — three shipped modules declare `invoice` — so a
+  dataset resolved by bare code could land on a stranger's table. Install resolves an
+  entity code against the module that owns it; the same resolution now applies to
+  reference columns.
+- **A bridge module's Formula column installed with no AST.** The parse pass walked the
+  module's own entities only, so a Formula contributed through the extension pattern was
+  stored with its formula *text* and no `formula_parsed` — and every consumer reads the
+  AST, so the column rendered blank everywhere with no install warning. Existing tenants
+  need the bridge module reinstalled; there is nothing to migrate, the formula has to be
+  parsed by the installer.
+- **An action's params could not shrink to zero on upgrade.** Dropped param sets are now
+  swept once per install pass and param-set ids deduped on insert.
+- **Extension-column defaults are reconciled on upgrade** and no-op `DEFAULT` ALTERs are
+  skipped — the "Script execution error: method is required." seen after an upgrade
+  install.
+- **A folder-owning module's installer roles are granted at its host folders**, not only
+  at its own.
+- **The "folder entity binds a view the entity does not declare" error names who can
+  declare it**, so the fix is in the message.
+- **A dependency contract no longer rejects a self-provided extension column** — a module
+  extending its own entity was being asked to import from itself.
+
+### System modules
+
+Installing or upgrading with this CLI moves a tenant to:
+
+| Module | manifest | dbSchemaVersion |
+|---|---|---|
+| `admin` | 1.16.1 | 1.16.1 |
+| `metadata` | 1.6.0 | 1.6.0 |
+
+`admin` 1.15.0 adds `"dForge"."user".is_dev` on tenants provisioned before it reached the
+baseline; 1.16.0 drops the `ON DELETE SET NULL` FK on `audit.change_log.folder_id`
+(deleting a folder erased the folder from its own audit rows, which is what decides who
+may read them); 1.16.1 admits `source = 'S'` so module seed and demo-data loads stop
+being labelled "direct SQL". `metadata` 1.5.1 corrects the in-database description of
+`entity_column.flags` to the live vocabulary — `V`/`I`/`E`/`M`; the `O`/`G`/`S`/`F`/`X`/`W`
+letters it used to list were never implemented and have no reader on either side of the
+wire. `metadata` 1.6.0 drops the numeric `def_params` described above.
+
+## [0.2.15] — 2026-08-17
+
+Maintenance build; no authoring-surface change. Changelog entry added retroactively with
+0.2.16.
+
+### Fixed
+
+- **A report param that reaches the write with no resolved `fieldTypeCd` fails the
+  install** instead of storing a param with no control. `param.field_type_cd` is
+  nullable, so the defaulting loop being reordered would have written NULL silently.
+- Wording in the unrecognized-`manifest.features` rejection.
+
 ## [0.2.14] — 2026-08-13
 
 ### Added
