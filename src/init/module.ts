@@ -25,8 +25,10 @@ import {
 	buildGitignore,
 	buildVscodeSettings,
 	buildZedSettings,
+	buildZedTasks,
+	buildDepsContract,
 } from "./templates";
-import type { EntitySpec, Preset, ScaffoldOpts, Traits } from "./types";
+import type { DependencySpec, EntitySpec, Preset, ScaffoldOpts, Traits } from "./types";
 
 const CANCEL_EXIT = 130;
 
@@ -121,6 +123,16 @@ export async function runInitModule(argv: string[]): Promise<number> {
 	// side is a future improvement.
 
 	console.log("");
+	if (opts.dependencies.length > 0) {
+		// The contracts are written with a guessed pk and a placeholder provenance
+		// token; both pass validation but are not yet true, so say so out loud.
+		const files = opts.dependencies
+			.map((d) => `deps/${typeof d === "string" ? d : d.module}.json`)
+			.join(", ");
+		console.log(`Wrote ${files}. Correct each entity's 'pk' against the provider and`);
+		console.log("replace the placeholder 'use' token with the real usage before you pack.");
+		console.log("");
+	}
 	console.log("Next steps:");
 	console.log(`  cd ${path.relative(process.cwd(), opts.path) || "."}`);
 	console.log(`  dforge-cli module install --path . --code <tenant>`);
@@ -137,6 +149,7 @@ interface InitArgs {
 	license?: string;
 	version?: string;
 	dbSchemaVersion?: string;
+	/** Raw `--dependencies` tokens, each `module:entity[+entity…]`. */
 	dependencies?: string[];
 	preset?: string;
 	/** Entity names; each becomes one entity with default label + traits. */
@@ -260,10 +273,52 @@ function buildOptsFromArgs(absPath: string, args: InitArgs): ScaffoldOpts | null
 		license: args.license ?? "MIT",
 		version,
 		dbSchemaVersion,
-		dependencies: args.dependencies ?? ["admin", "metadata"],
+		dependencies: parseDependencies(args.dependencies ?? []),
 		preset: preset as Preset,
 		entities,
 	};
+}
+
+// System modules are provisioned into every tenant before any other module
+// installs, so a module never needs to depend on one. Naming one is only
+// meaningful as a minimum-platform-version gate, which is not a scaffold-time
+// decision — hence a hard reject here, with the reason.
+const SYSTEM_MODULES = new Set(["admin", "metadata", "workspace"]);
+
+/**
+ * Parses `--dependencies` tokens of the form `module:entity[+entity…]`.
+ *
+ * The entity list is mandatory because every manifest dependency needs a
+ * matching deps/<module>.json contract naming at least one consumed entity;
+ * scaffolding the manifest half alone produces a module that cannot be packed
+ * (dForge-core issue #1090).
+ */
+function parseDependencies(tokens: string[]): DependencySpec[] {
+	return tokens.map((token) => {
+		const [module, entityList] = token.split(":");
+		if (!module || !entityList) {
+			throw new Error(
+				`dforge-cli init module: --dependencies "${token}" must name the entities you consume, ` +
+					`as module:entity[+entity]. Every dependency needs a deps/${module || "<module>"}.json ` +
+					`contract declaring at least one entity, so a dependency with no named entity cannot be scaffolded. ` +
+					`If you do not consume anything from it yet, leave it out and add it later with dforge_dependency_add.`,
+			);
+		}
+		if (SYSTEM_MODULES.has(module)) {
+			throw new Error(
+				`dforge-cli init module: '${module}' is a system module — it is provisioned into every tenant, ` +
+					`so depending on it buys nothing. Declare it by hand only to require a minimum platform version ` +
+					`for a feature you use (e.g. "metadata": ">=1.5.0"), with a contract naming the entity that feature introduced.`,
+			);
+		}
+		const entities = entityList.split("+").map((e) => e.trim()).filter(Boolean);
+		if (entities.length === 0) {
+			throw new Error(
+				`dforge-cli init module: --dependencies "${token}" names no entities after the colon.`,
+			);
+		}
+		return { module, entities };
+	});
 }
 
 function printModuleHelp(): void {
@@ -280,7 +335,8 @@ function printModuleHelp(): void {
 	console.log("  --license <id>             Default: MIT");
 	console.log("  --version <semver>         Default: 0.1.0");
 	console.log("  --db-schema-version <ver>  Default: 0.0.1");
-	console.log("  --dependencies <a,b>       Default: admin,metadata");
+	console.log("  --dependencies <mod:ent>   Consumed module + entities, e.g. fin:invoice+line.");
+	console.log("                             Repeatable/comma-separated. Default: none.");
 	console.log("  --preset <p>               minimal | minimal-plus | full  (default: minimal)");
 	console.log("  --entity <name[,name…]>    Entities to scaffold (default: item). Repeatable.");
 	console.log("  --traits <t>               identity+audit | identity  (default: identity+audit)");
@@ -338,16 +394,6 @@ async function collectOpts(absPath: string): Promise<ScaffoldOpts | null> {
 					initialValue: "0.0.1",
 					validate: validateSemver,
 				}),
-			dependencies: () =>
-				p.multiselect({
-					message: "Depend on system modules (space to toggle)",
-					options: [
-						{ value: "admin", label: "admin (required for most modules)" },
-						{ value: "metadata", label: "metadata (required for most modules)" },
-					],
-					initialValues: ["admin", "metadata"],
-					required: false,
-				}),
 			preset: () =>
 				p.select({
 					message: "Scaffold preset",
@@ -404,7 +450,7 @@ async function collectOpts(absPath: string): Promise<ScaffoldOpts | null> {
 		license: (meta.license as string | undefined) ?? "MIT",
 		version: meta.version as string,
 		dbSchemaVersion: meta.dbSchemaVersion as string,
-		dependencies: (meta.dependencies as string[] | undefined) ?? [],
+		dependencies: [],
 		preset: meta.preset as Preset,
 		entities,
 	};
@@ -467,6 +513,17 @@ function writeAll(opts: ScaffoldOpts): void {
 	writeJson(path.join(root, "ui", "menus.json"), buildMenus(opts));
 	writeJson(path.join(root, "ui", "actions.json"), buildActions());
 	writeJson(path.join(root, "security", "roles.json"), buildRoles(opts));
+	// Every manifest dependency needs its contract or the module will not pack.
+	for (const dep of opts.dependencies) {
+		// The CLI's own parseDependencies always yields the object form; a bare
+		// code can only reach here from a legacy programmatic caller, which gets
+		// the legacy manifest-only behaviour (buildManifest) and no contract.
+		if (typeof dep === "string") continue;
+		writeJson(
+			path.join(root, "deps", `${dep.module}.json`),
+			buildDepsContract(dep, opts.code),
+		);
+	}
 	writeText(path.join(root, ".gitignore"), buildGitignore());
 
 	// Editor-bindings: VS Code + Zed pick these up automatically from
@@ -475,6 +532,8 @@ function writeAll(opts: ScaffoldOpts): void {
 	// comment on SCHEMA_BINDINGS in templates.ts.
 	writeJson(path.join(root, ".vscode", "settings.json"), buildVscodeSettings());
 	writeJson(path.join(root, ".zed", "settings.json"), buildZedSettings());
+	// Zed has no extension command API — the CLI dev loop ships as tasks.
+	writeJson(path.join(root, ".zed", "tasks.json"), buildZedTasks());
 
 	// Full preset adds the optional-but-typical files. None are required
 	// for `module validate` to pass; they're there as scaffolding the author
@@ -485,7 +544,7 @@ function writeAll(opts: ScaffoldOpts): void {
 		for (const e of opts.entities) {
 			writeJson(
 				path.join(root, "seed-data", `01-${e.name}.json`),
-				buildSeedData(),
+				buildSeedData(e),
 			);
 		}
 		ensureDir(path.join(root, "logic", "actions"));
