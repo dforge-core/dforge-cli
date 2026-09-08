@@ -10,6 +10,128 @@ release corresponds to a `cli-vX.Y.Z` tag in that repo. Because `pack`, `validat
 and `install` share the platform's module loader/installer, most CLI behaviour
 changes ride along with the shared services — noted below per release.
 
+## [0.2.18] — 2026-09-08
+
+Operator tooling only — nothing in this release changes how modules are packed,
+validated or installed.
+
+All three command groups below talk to the **auth database directly**
+(`ConnectionStrings:AuthDatabase`), not to the API over HTTP. They are control-plane
+commands: they read and write the tenant registry, so `auth login` does not apply and
+`--url` is not involved. The backup commands additionally shell out to `pg_dump` /
+`pg_restore`, so the host running them needs a Postgres client at least as new as the
+server, and the auth DB must be at migration `0022` or later (`tenant_backup`).
+
+### Added
+
+- **`cell` — CRUD over the `db_server` placement registry.** The cells tenant
+  databases live on were previously editable only by hand-written SQL, which is a poor
+  place for the dozen refusals that keep the registry honest.
+
+  ```bash
+  dforge-cli cell list
+  dforge-cli cell add --code eu-cell-02 --host pg-02.internal \
+      --credential-ref DbServers:eu02 --region eu-central-1 --max-databases 500
+  dforge-cli cell set-state --code eu-cell-02 --to draining
+  ```
+
+  `list` `show` `add` `update` `set-state` `remove`. `update` alters only the options
+  you pass, and an option given as an empty string clears it; `add` and `update` both
+  take `--dry-run`.
+
+  - **`list` ends with placement readiness, not just occupancy.** Per cell: how many
+    tenants still carry a `connection_string` override, and how many sit in the
+    un-placeable `Incomplete` credential half-state — the two counts that decide whether
+    a cell can move to `TenantPool:Placement = Prefer`. Tenants with no cell at all are
+    listed separately.
+  - **`show` reports whether *this process* has an admin credential for the endpoint.**
+    A cell can look perfect in the registry and still be unusable, and the registry
+    cannot know that — only the running configuration can.
+  - **Refuses:** an invalid or duplicate code; an endpoint another cell already owns;
+    half a pooler endpoint, or one equal to the direct endpoint; a `--max-databases` of
+    0 (the placement policy reads a non-positive ceiling as *uncapped*, so 0 would mean
+    the opposite of what it looks like); a relative `--file-root`; renaming a cell;
+    retiring or removing a cell that still holds tenants.
+  - **Warns** where the change is legal but wider than it looks: a host/port change
+    repoints every tenant on the cell and copies nothing (`tenant move` is what
+    relocates data); a ceiling below the current count; a tier or region change under
+    existing tenants; no `TenantProvisioning:Servers` entry matching the endpoint.
+  - `draining` and `readonly` only stop the placement policy from choosing a cell for
+    **new** tenants. Nothing else in the runtime reads the state, so existing tenants
+    keep reading *and writing*.
+
+  The refusals live in `CellRegistryPolicy` and the read half is shared with the
+  operator app's fleet page through `CellRegistry`, so the CLI and the UI cannot drift
+  into disagreeing about what a cell is.
+
+- **`tenant backup` / `restore` / `backups` / `prune-backups` — per-workspace archives.**
+  Dump, files and a manifest into `${BACKUP_ROOT}/{code}/{timestamp}Z/`, with every run
+  recorded in the new `tenant_backup` ledger.
+
+  ```bash
+  dforge-cli tenant backup --code acme --out /backup/dforge
+  dforge-cli tenant backup --all --cell eu-cell-01 --kind scheduled   # the nightly cron
+  dforge-cli tenant restore --from /backup/dforge/acme/20260908T102739Z
+  dforge-cli tenant backups --failed
+  dforge-cli tenant prune-backups --dry-run
+  ```
+
+  **This is not disaster recovery.** It restores ONE workspace with an RPO of "the last
+  run"; cluster PITR is a separate and more urgent thing, and neither substitutes for
+  the other.
+
+  - **Online is the default, and the skew is bounded in the safe direction.** `pg_dump`
+    takes its own snapshot, so the database half is fully consistent; files are archived
+    *after* it, so the worst case is an orphan file — never a row pointing at a file the
+    archive lacks. `--consistent` (with `--settle-seconds`) locks and settles first, for
+    a migration or a hand-over.
+  - **The password is always regenerated on restore.** The archive carries none, which
+    is what lets it restore into a rebuilt control plane or a customer's own instance.
+    A renamed restore (`--as`) also gets its **own** Postgres role, with ownership
+    reassigned inside the restored database only — reusing the archived role would let
+    two live workspaces read each other's data.
+  - **`--replace` never destroys.** It creates a new database and prints the `DROP` for
+    the old one for you to run.
+  - **The ledger records failures, not just successes.** A failed backup that leaves no
+    trace is indistinguishable from one that was never scheduled — so `backups` can end
+    on the question that actually matters: which active workspaces have no successful
+    backup in 48h, *including those that have never had one*, which no listing of runs
+    can show.
+  - **`prune-backups` is grandfather-father-son**: `--keep-daily 7`, `--keep-weekly 4`,
+    `--keep-monthly 6` by default, `--dry-run` shows every decision.
+  - **Refuses** anything that would produce an archive that cannot be restored: an
+    unplaced workspace; no configured server for its cell; no `db_username` (the dump
+    preserves ownership, so a restore needs the role name); a non-local file provider
+    without `--no-files`; free space below the last archive × 1.2; an archive already at
+    that timestamp. On the way back in: a manifest newer than the binary understands;
+    a missing dump; promised files with no `files.tar.gz`; a retired target cell; a
+    taken database name; an existing code without `--as`/`--replace`; `--replace` on a
+    workspace that is not locked or inactive; no `Secrets:EncryptionKey`.
+
+- **`tenant clear-overrides` — the second half of `auth-migrations/0015`.** That
+  migration made `tenant.connection_string` nullable and deliberately nulled nothing,
+  leaving the data change as a documented SQL procedure in its own comments: an audit
+  query that must return zero, a backup of the column, then a guarded `UPDATE`. Three
+  steps that must happen in that order with no reverse if they don't — which is the
+  shape that belongs in a command rather than in a comment an operator retypes at 2am.
+
+  ```bash
+  dforge-cli tenant clear-overrides --dry-run
+  ```
+
+  - **Only run this once every process is on `TenantPool:Placement = Prefer`.** Under
+    `Off` or `Verify` the stored override is what actually routes the workspace, so
+    clearing it is an outage rather than a cleanup.
+  - **Refuses to clear anything** while any active workspace would lose its only route
+    to a database, and names each one with the reason: no cell, no `db_name`, a cell
+    with no usable port, a half-written credential, or no credential at all.
+  - **Saves the column to `tenant_connection_string_backup` first.** The override held
+    the only plaintext copy of the password; there is no automatic reverse.
+  - **Skips workspaces composing through a cell's shared `credential_ref`** even though
+    they compose: their override holds the only copy of a secret the application config
+    must otherwise supply, which is a bigger decision than this command should make on
+    an operator's behalf.
+
 ## [0.2.17] — 2026-09-08
 
 ### Fixed
