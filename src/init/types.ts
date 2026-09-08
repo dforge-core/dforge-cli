@@ -19,6 +19,17 @@ export interface EntitySpec {
 	constraints?: ConstraintSpec[];
 }
 
+/**
+ * One declared dependency. `entities` is what the module consumes from it and
+ * is never empty: the platform requires a deps/<module>.json contract naming at
+ * least one entity for every manifest dependency, so a dependency we cannot
+ * name an entity for is one we must not scaffold.
+ */
+export interface DependencySpec {
+	module: string;
+	entities: string[];
+}
+
 export interface ScaffoldOpts {
 	path: string;          // absolute destination directory
 	code: string;
@@ -28,7 +39,11 @@ export interface ScaffoldOpts {
 	license: string;
 	version: string;
 	dbSchemaVersion: string;
-	dependencies: string[]; // e.g. ["admin", "metadata"]
+	/**
+	 * Accepts bare module codes too: @dforge-core/dforge-mcp calls these builders
+	 * across a caret range and older published versions still pass string[].
+	 */
+	dependencies: Array<DependencySpec | string>;
 	preset: Preset;
 	entities: EntitySpec[]; // at least one
 }
@@ -45,7 +60,12 @@ export interface Manifest {
 	description?: string;
 	author?: { name: string };
 	license?: string;
-	dependencies?: Record<string, string>;
+	/**
+	 * Either a bare semver range or the object form that narrows the dependency
+	 * to named entities. The scaffolder always writes the object form, since it
+	 * only declares a dependency whose consumed entities it knows.
+	 */
+	dependencies?: Record<string, string | { version: string; entities: string[] }>;
 	entities: Record<string, string>;
 	created?: string;
 	updated?: string;

@@ -10,6 +10,58 @@ release corresponds to a `cli-vX.Y.Z` tag in that repo. Because `pack`, `validat
 and `install` share the platform's module loader/installer, most CLI behaviour
 changes ride along with the shared services — noted below per release.
 
+## [0.2.17] — 2026-09-08
+
+### Fixed
+
+- **`init module` produced a module that could not validate or pack.** Every preset was
+  affected, on three independent counts:
+
+  - **A default dependency on `admin` and `metadata`.** The scaffolder wrote both into
+    `manifest.json`, and the interactive prompt offered them labelled "required for most
+    modules". Every manifest dependency needs a matching `deps/<module>.json` contract, so
+    the scaffolder's own default failed the dependency-contract check on the first
+    `module validate`. It is also advice that was never true: system modules are
+    provisioned into every tenant before any other module installs, so depending on one
+    buys nothing. The default is now no dependencies, and the prompt is gone.
+  - **Entities had no fields.** `traits` only contribute a primary key and audit stamps, so
+    a scaffolded entity had no renderable scalar: its grid view failed the data-view column
+    check, and `toString` interpolated `{id}`, a column the identity trait never creates.
+    Each entity now gets a visible, editable, mandatory `name` column, and `toString` is
+    `{name}`.
+  - **`--preset full` crashed the validator.** Seed files were written as a bare `[]`, but a
+    seed file is an object — `{ entityCode, records }`. Deserialization threw before any
+    check ran. They are now written in the right shape, with no records: seeding needs
+    explicit primary keys only the author can choose.
+
+  A freshly scaffolded module now passes `module validate` and `module pack` on `minimal`,
+  `minimal-plus` and `full`, with one entity or several, with either trait set.
+
+- **Zed never applied the bundled JSON schemas.** `.zed/settings.json` was written with a
+  `languages.JSON` block, which Zed silently ignores — `languages.*` accepts editor
+  settings like `tab_size`, not schema bindings. The mappings now go where the JSON
+  language server reads them, under `lsp.json-language-server.settings.json.schemas`.
+
+### Changed
+
+- **`--dependencies` now names the entities you consume:** `--dependencies fin:invoice`, or
+  `fin:invoice+invoice_line` for several. `init module` writes the required
+  `deps/<module>.json` contract alongside the manifest entry, which it cannot do without
+  knowing at least one consumed entity — and a dependency you cannot name an entity for is
+  one you should not declare. A bare `--dependencies fin` and a system module
+  (`--dependencies admin:user`) are both rejected, each explaining why. The contract ships
+  with a guessed `pk` and a placeholder provenance token, and the post-scaffold note says
+  to correct both before packing.
+
+### Added
+
+- **More schemas bound for editors, and Zed gets the dForge MCP server and a task set.**
+  `logic/triggers.json`, `logic/webhooks.json`, `ui/print_templates.json` and `deps/*.json`
+  now resolve to their schemas in VS Code and Zed alike. `.zed/settings.json` also registers
+  `@dforge-core/dforge-mcp` as a context server for Zed's agent panel, the same wiring
+  `.mcp.json` gives Claude Code, and a new `.zed/tasks.json` carries the pack / install /
+  auth dev loop — Zed has no extension command API, so the commands ship as tasks.
+
 ## [0.2.16] — 2026-08-28
 
 ### Added
