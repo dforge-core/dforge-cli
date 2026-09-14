@@ -10,6 +10,81 @@ release corresponds to a `cli-vX.Y.Z` tag in that repo. Because `pack`, `validat
 and `install` share the platform's module loader/installer, most CLI behaviour
 changes ride along with the shared services — noted below per release.
 
+## [0.2.19] — 2026-09-14
+
+Operator tooling only — nothing in this release changes how modules are packed,
+validated or installed.
+
+Requires the auth database at migration **`0023`** (`db_server.admin_username` /
+`admin_password`), and `Secrets:EncryptionKey` configured, since the stored password
+is encrypted with it.
+
+### Added
+
+- **A cell can carry its own provisioning credential**, on the registry row rather
+  than only in `TenantProvisioning:Servers`.
+
+  ```bash
+  dforge-cli cell add --code eu-cell-02 --host pg-02.internal \
+      --admin-username dforge_admin --admin-password '…'
+  dforge-cli cell update --code eu-cell-02 --admin-username ''   # clears both halves
+  ```
+
+  Adding a cell used to be two systems: a live registry write plus a static config
+  change. .NET binds configuration once at startup, so that second half meant
+  recreating every service that provisions — a deliberate outage blip to add a cell
+  no existing workspace uses yet. Routing never needed it: a tenant carries its own
+  role in `db_username` / `db_password`, and `credential_ref` only serves cells that
+  genuinely share one.
+
+  - **Stored the same way as the per-tenant credential** — AES-256-GCM under
+    `Secrets:EncryptionKey`, never plaintext — and the same precedence rule: the more
+    specific source wins, config stays the fallback. `TenantProvisioning:Servers` is
+    **not** retired; a deployment projecting secrets from a vault into configuration
+    keeps working untouched.
+  - **Clearing is one gesture.** Emptying `--admin-username` drops the password with
+    it, so a cleared cell cannot keep a ciphertext no code path will read again.
+  - **An update that does not mention the password leaves it untouched** in the
+    database, rather than reading it out and writing it back — the stored secret never
+    enters the process at all.
+  - Half a credential is treated as none, and the password is kept out of the general
+    cell read path so it cannot reach the fleet API, a log or a diagnostic by accident.
+
+- **`cell show` names the source of admin access**, not just whether it exists: the
+  credential stored on the cell, a matching `TenantProvisioning:Servers` entry, or
+  neither. Where both are present it says which wins; where neither is, it prints the
+  `cell update` line that fixes it. A cell can look perfect in the registry and still
+  be unusable, and this is the difference between "add a cell" being one CLI call and
+  being a CLI call plus a redeploy.
+
+### Changed
+
+- **`tenant move`, `tenant restore` and `tenant revoke-connect` resolve the admin
+  credential through one shared path**, so a cell carrying its own credential is
+  usable everywhere the configured kind already was.
+  - **`tenant revoke-connect` read configuration alone and *skipped* such a cell with
+    a warning** — on a registry-driven fleet that meant hardening nothing at all.
+  - **`tenant move` now refuses up front when the *source* cell has no credential.**
+    The dump comes off the source, so a move that only checked the target failed
+    partway through instead of before it started.
+  - **`tenant restore` resolves once** and reuses it for the preflight, the
+    database-existence probe and the restore itself.
+- **`tenant clear-overrides` shares its SQL with the console's `fleet.clearOverrides`**,
+  so the two agree on which workspaces are clearable and which are blocked, and why.
+  The placement caveat is unchanged and cannot be closed here: the CLI's own
+  `TenantPool:Placement` mode is not the mode the API and the scheduler are running, so
+  it warns and makes you type the count where the console can refuse outright.
+- Backup output counts **`table(s)`** rather than `relation(s)`.
+
+### Removed
+
+- **`init seed` is retired.** The demo tenant and admin user came from
+  `auth-schema-seed.sql`, which no longer exists. The command is kept, and says so,
+  because it is what muscle memory and old runbooks reach for — it points at
+  `tenant create` + `user register` instead. The reference rows a fresh auth database
+  needs (providers, cultures, email templates) are unaffected and still applied by
+  `init database`.
+
 ## [0.2.18] — 2026-09-08
 
 Operator tooling only — nothing in this release changes how modules are packed,
