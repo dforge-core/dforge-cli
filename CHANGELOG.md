@@ -10,6 +10,159 @@ release corresponds to a `cli-vX.Y.Z` tag in that repo. Because `pack`, `validat
 and `install` share the platform's module loader/installer, most CLI behaviour
 changes ride along with the shared services — noted below per release.
 
+## [0.2.20] — 2026-09-22
+
+The first release since 0.2.17 that **does** change how modules are packed, validated
+and installed. Two authoring surfaces are new (card layouts, record comments), the
+stored-procedure declaration file finally has a schema behind it, and several things
+that used to install clean and fail at run time now fail at `pack` / `validate` time
+instead.
+
+Corresponds to platform **1.24.2**. Installing into a tenant brings its system modules
+to **metadata 1.12.0** and **admin 1.19.0**; the platform applies those migrations on
+the tenant's first connect after deploy and fails the request if it cannot.
+
+### Added
+
+- **A module ships the form its records open in** — `ui/card_layouts.json`, optional,
+  one entry per layout. Without one, every entity's card is an ungrouped dump of its
+  columns in `orderNum` order, which is what every module shipped until now.
+
+  ```json
+  {
+      "employee_profile": {
+          "entity": "employee",
+          "isDefault": true,
+          "layout": {
+              "sections": [
+                  { "type": "columnGroup", "code": "identity", "label": "Identity",
+                    "cols": 3, "columns": ["employee_code", "first_name", "email"] },
+                  { "type": "tabGroup", "code": "detail_tabs",
+                    "tabs": [ { "type": "set", "code": "leave_requests" } ] }
+              ]
+          }
+      }
+  }
+  ```
+
+  `entity` is required; `view` defaults to `"default"`. Section headings are
+  localizable through `translations/<locale>.json` like every other authored label.
+
+  - **A tenant-drawn layout is still untouchable.** `entity_view_layout` gained a
+    `module_id`: `NULL` means the tenant drew it and the installer may not touch it,
+    non-NULL means the package declares it and it is recreated on every install. Both
+    contracts hold at once — a reinstall cannot destroy a form someone drew by hand.
+  - **A layout may lay out another module's entity**, which is why uninstall scopes its
+    delete by what the module *wrote* rather than by the entities it owns.
+
+- **`comments: true` on an entity** grows a composer and a thread on the record card —
+  markdown body, one level of replies, `@` mentions, author-only editing, soft delete.
+  Authored on the entity or in the manifest; the installer flattens both into one
+  stored `entity.comments`, exactly as `auditHistory` already worked. A tenant admin
+  can override the module's say at run time with the `admin.comments_mode` setting
+  (`module` / `on` / `off`), which is folder-scoped like any other module setting.
+
+  The read gate is the same **entity-level** Select check `audit.getHistory` runs, so a
+  comment is visible to whoever can read the entity — stated rather than papered over.
+
+- **`logic/stored_procedures.json` is a documented file.** It was the one module-package
+  file with no schema, no type and no example: the dataset validator demanded it by name
+  and nothing said what went in it ([#1191]). There is a `stored_procedures.schema.json`
+  now, and `docs/business-logic/stored-procedures.md` describes the file in full.
+
+- **A procedure's result columns are read off its signature** when the manifest declares
+  no `columns` block — the named `RETURNS TABLE (…)` / OUT columns from `pg_proc`, in
+  order, each mapped to the field type its PostgreSQL type implies. A declared block
+  still wins outright, since it carries labels, widths and `refEntityCd` links a
+  signature cannot know. Existing modules pick this up on their next install; no manifest
+  change needed.
+
+- **A column can carry its own format rule.** `pattern` / `patternFlags` on a column, or
+  `pattern` in a field type's `def_params`, as an **ECMAScript** regex source — the
+  browser compiles it too. The `email` / `phone` / `url` rules were regex literals in two
+  codebases and are now seeded metadata, so a tenant with its own idea of a valid phone
+  number can say so without a release.
+
+### Changed
+
+- **Format and min/max are enforced server-side**, not in the browser alone.
+  `data.insert` / `data.update` now run `ValidateFieldFormat` and `ValidateMinMax`
+  alongside the required and maxLen checks they already ran — so REST, a DSL `update()`
+  and the grid's Bulk Update no longer write straight past both. Both mirror the client
+  validator case for case, deliberately: a value the browser accepts and the server
+  rejects is unfixable from the UI.
+
+  Still client-only, and worth knowing when you author one: **`params.fieldOptions.canEdit`**.
+  Generated posted-document and closed-period locks are DDL triggers and hold wherever
+  the write comes from; an authored rule is a formula nothing on the server evaluates at
+  write time. It decides whether a control renders read-only and nothing more.
+
+- **Closed-period and posted-document locks are enforced in triggers only.** The C#
+  period check is gone; the generated triggers cover actions too, so a lock now holds
+  against every write path rather than the ones that happened to route through the API.
+
+- **An SP report param binds as its declared type.** `numeric`, `date`, `uuid`,
+  `timestamptz` and the rest of the scalar set now bind as themselves instead of going
+  over as text — which did not coerce, so the whole call failed to resolve the function
+  (`42883: function … does not exist`). Two consequences at install: a `pgType` outside
+  the supported set now **fails the install** naming the supported types, where it used
+  to install clean and produce a broken report; and a value that cannot be parsed as its
+  declared type is an error naming the param, where a bad number used to bind as `null`
+  and run as if the filter had been left empty. `paramCd` (≤ 50 chars) and `fieldTypeCd`
+  are checked at install too.
+
+- **`viewType: "master-detail"` is retired.** It sat in the enum with no component behind
+  it and rendered a grid. Master/detail belongs in a card layout — `set` sections under a
+  `tabGroup` — and level-1 `dataSources` on a data view are documented for what they are:
+  **nothing renders them today**, only level 0 is drawn.
+
+- **`tenant restore` names the role the restore will actually create**, not the one in the
+  archive. A renamed restore creates a different role, and printing the archived name read
+  as "this will rotate the live workspace's credential". It now prints
+  `role <planned> (archived: <original>)` when the two differ.
+
+### Fixed
+
+- **A package that passes `validate` can no longer fail the install** on its stored
+  procedures. `functionName` and `schemaName` are checked at package load, where every
+  install path converges, so `pack`, `validate`, the CLI and the marketplace import all
+  report an absent one identically — with the fix spelled out for that procedure. The
+  rest of the file (param codes and `pgType`, column codes and duplicates) moved into a
+  `StoredProcedureValidator` that both sides call. Previously a guessed-at shape was
+  accepted whole by `validate` — it only checked that the *key* existed — and install
+  then rejected it as `Invalid SQL identifier for SP 'rpt_item_total' function name: ''`,
+  naming neither the property nor the file ([#1191]).
+
+- **`reports.schema.json` declared a field the platform has never read.** Under
+  `additionalProperties: false` it had `procedureName`, so editor validation rejected the
+  real `spCd` and accepted a name nothing reads. Both the canonical schema and the
+  `@dforge-core/metadata` type say `spCd` now.
+
+- **An SP-backed report nobody can open now fails the build.** `report.run` enforces `E`
+  on the report *and* `E` on the stored procedure's own sec_object; a module granting
+  `"report:x": "E"` and nothing else installed clean and then answered `PERMISSION_DENIED`
+  for every user ([#1146]). `ReportSpRightsValidator` fails `module validate` / `module pack`
+  when a role in the package grants a report whose `"S"` dataset binds an SP no role grants,
+  naming the key to add. This is a hard failure rather than a warning because there is no
+  recovery after install: the role-rights admin API lists `object_type IN ('E','A','R')`,
+  so a tenant admin cannot grant on a stored procedure by hand. Cross-package directions
+  are deferred to install, where every role in the tenant is visible, and warn instead.
+
+- **A report parameter must be spelled exactly as the procedure's `paramCd`.** `report.run`
+  resolves each argument by that code alone and neither adds nor strips a prefix, so a
+  report offering `customer_id` against a procedure declaring `p_customer_id` binds NULL —
+  the filter disappears with no error, which on a customer-scoped report means showing
+  every customer's rows. The documented examples used the prefixed form on one side and
+  the bare form on the other; they now agree, and the rule is written down beside them.
+
+- **Uninstalling a module whose records anyone had watched failed** on `23503`.
+  `uninstall_module` never deleted `record_subscription`, whose FK to `entity` is
+  NO ACTION — a bug since admin 1.13.0 added the table. Both cleanup functions are
+  restated in metadata 1.12.0.
+
+[#1146]: https://github.com/iash44/dForge-core/issues/1146
+[#1191]: https://github.com/iash44/dForge-core/issues/1191
+
 ## [0.2.19] — 2026-09-14
 
 Operator tooling only — nothing in this release changes how modules are packed,
