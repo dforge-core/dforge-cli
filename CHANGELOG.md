@@ -10,6 +10,68 @@ release corresponds to a `cli-vX.Y.Z` tag in that repo. Because `pack`, `validat
 and `install` share the platform's module loader/installer, most CLI behaviour
 changes ride along with the shared services — noted below per release.
 
+## [0.2.21] — 2026-09-23
+
+An entity's `toString` — the caption its records show in every lookup, picker,
+breadcrumb and notification — is now checked at `pack` / `validate` time, and
+generated at install time when the entity declares none.
+
+Installing into a tenant brings its `admin` system module to **1.19.1**.
+
+### Added
+
+- **A missing `toString` is generated at install**, and `pack`, `validate` and
+  `install` all say which one will be used:
+
+  ```
+    ⚠️  2 entities declare no "toString":
+       for entity invoice, toString format "{invoice_number} {invoice_date}" will be used
+       for entity invoice_line, toString format "{description}" will be used
+  ```
+
+  Before, such an entity's records captioned as their raw primary key — a snowflake id
+  or a GUID. The generated caption is stored in the tenant; the package is never
+  changed. The rules match exact field names (case-insensitive, keeping the field's
+  own casing), first match wins:
+
+  1. a number — the `numberSequence` column, `number`, `<entity>_number`,
+     `<entity>_no` — with `date` or `<entity>_date` when there is one;
+  2. a code (`code`, `<entity>_code`, `<entity>_cd`) with a name;
+  3. a name (`display_name`, `name`, `full_name`, `title`, `subject`, `*_name`,
+     `*_title`, `label`, `description`);
+  4. the code alone;
+  5. for a line, its parent reference and line number (`{order} #{LineNumber}`).
+
+  Only visible physical columns are used, never a GUID or surrogate key. When nothing
+  matches, the warning says so and records keep showing their key.
+
+  The caption is regenerated on every install, so a later rule change can change it.
+  Declare `toString` to pin it.
+
+- **A warning when a declared `toString` names an id no user can read** — a `uuid` or
+  `cuid` column, or an `int8` surrogate key.
+
+### Changed
+
+- **A `toString` placeholder that names no field fails `pack`, `validate` and
+  `install`.** It used to install clean and render as empty text in every lookup. A
+  placeholder that differs from its field only in case, or names a set column, fails
+  the same way:
+
+  ```
+  ✗ toString placeholders: toString check failed. 1 unresolvable placeholder(s):
+  - payment_term: toString "{nmae}" names {nmae}, which is not a field of the entity.
+  ```
+
+- **A `user` field in a `toString` renders the user's full name** in lookups, and
+  import matches a cell by that name as well as by the id.
+
+### Fixed
+
+- **`admin.webhook_delivery`** captioned as ` #123`: its `toString` named a `{module}`
+  field the entity does not have. It is `{event_type} #{delivery_id}` now (admin
+  1.19.1).
+
 ## [0.2.20] — 2026-09-22
 
 The first release since 0.2.17 that **does** change how modules are packed, validated
