@@ -10,6 +10,75 @@ release corresponds to a `cli-vX.Y.Z` tag in that repo. Because `pack`, `validat
 and `install` share the platform's module loader/installer, most CLI behaviour
 changes ride along with the shared services — noted below per release.
 
+## [0.2.23] — 2026-09-27
+
+A role that can edit a record but cannot read a lookup's target now gets a warning
+at `pack` / `validate` time, and `init` wires up the schema for the new diagram files.
+
+Installing into a tenant keeps its `admin` system module at **1.19.1**.
+
+### Added
+
+- **A warning when a role edits a lookup whose target it cannot read.** A role with
+  `I` or `U` on an entity but no `S` on the target of one of its Reference columns
+  does not see that lookup on the create/edit form. If the lookup is required, the
+  record cannot be saved, and nothing says why. `validate` (text and `--json`), `pack`
+  and the local install log now report it and suggest the fix:
+
+  ```
+  role 'clerk' can insert/update 'invoice' but has no 'S' on 'crm.customer', the target
+  of required lookup 'customer_id'. The lookup is hidden from its forms and the record
+  cannot be saved unless the user also holds a role granting it.
+  Set "crm.customer": "S" in the role
+  ```
+
+  The target is resolved the same way the installer resolves it. A dependency's entity
+  is keyed `module.entity`, and the warning also names aliases for the same entity that
+  the installer would overwrite. The check never fails the command.
+
+- **`init` binds `docs/diagrams/*.json` to the `diagram` schema** in the generated
+  editor settings. A diagram file holds one named entity diagram: which entities it
+  draws, where they sit, a `detail` level (`conceptual`, `keys` or `full`), planned
+  entities that do not exist yet, and hand-drawn `relations`. Diagrams exist only at
+  design time. The installer never reads them.
+
+### Fixed
+
+- **Reinstalling a module with a new version now updates its description** from the
+  manifest. Before, the tenant kept the description from the first install.
+
+## [0.2.22] — 2026-09-23
+
+Two things that used to fail only at install time now fail at `pack` / `validate`
+time, and `validate` can print JSON.
+
+Installing into a tenant keeps its `admin` system module at **1.19.1**.
+
+### Added
+
+- **`module validate --json`** prints the static checks as one JSON object:
+  `module`, `version`, `ok`, `error` (set only when the package did not load),
+  `checks` (`name`, `ok`, `message`) and `warnings` (`where`, `message`). The exit
+  code is the same as without `--json`. `dforge_module_validate` in dforge-mcp runs
+  this command, so the MCP checks exactly the same rules as `pack`.
+
+### Changed
+
+- **`pack` and `validate` reject a column code that starts with `_`.** The platform
+  reserves the prefix for URL parameters and print-context keys. Install already
+  refused such a column, so authors found out only when an install failed. Every
+  offending column is listed in one error.
+
+### Fixed
+
+- **`IF` and `CASE` in a generated (`G`) column formula work.** Before, the formula
+  was passed to Postgres unchanged and the install failed. Formulas are now translated
+  to SQL, both same-row ones and set aggregates. A formula that cannot be translated
+  fails `pack` and `install` with the same message. Before, it was silently installed
+  as a plain column. A bare `[field]` inside a set aggregate, functions that read the
+  clock or the current user, and (in a stored column) any non-immutable function are
+  rejected. Fractional literals keep their source text, so `1.0` stays numeric.
+
 ## [0.2.21] — 2026-09-23
 
 An entity's `toString` — the caption its records show in every lookup, picker,

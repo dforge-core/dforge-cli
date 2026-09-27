@@ -316,6 +316,7 @@ const SCHEMA_BINDINGS: Array<{ fileMatch: string[]; schema: string }> = [
 	{ fileMatch: ["entities/*.json"], schema: "entity" },
 	{ fileMatch: ["ui/data_views.json"], schema: "data-views" },
 	{ fileMatch: ["ui/folders.json"], schema: "folders" },
+	{ fileMatch: ["docs/diagrams/*.json"], schema: "diagram" },
 	{ fileMatch: ["ui/menus.json"], schema: "menus" },
 	{ fileMatch: ["ui/reports.json"], schema: "reports" },
 	{ fileMatch: ["ui/print_templates.json"], schema: "print-templates" },
