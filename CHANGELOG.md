@@ -10,6 +10,34 @@ release corresponds to a `cli-vX.Y.Z` tag in that repo. Because `pack`, `validat
 and `install` share the platform's module loader/installer, most CLI behaviour
 changes ride along with the shared services — noted below per release.
 
+## [0.2.24] — 2026-09-27
+
+A check constraint written in formula syntax now fails at `pack` / `validate` time
+instead of at install.
+
+Installing into a tenant keeps its `admin` system module at **1.19.1**.
+
+### Changed
+
+- **`pack` and `validate` reject formula syntax in a check constraint `expression`**
+  (dForge-core#1263). The expression is copied into a PostgreSQL `CHECK (...)` as is,
+  so it must be plain SQL over real column names. Two formula habits are now errors:
+  - A `[field]` reference. Install failed with `syntax error at or near "["`. The error
+    prints the expression rewritten without brackets:
+
+    ```
+    row.constraints.CK_Dates: expression "[end_date] >= [start_date]" uses formula
+    bracket syntax. A check constraint is raw PostgreSQL over real column names —
+    write "end_date >= start_date".
+    ```
+
+  - `= null`, `!= null` or `<> null`. In SQL that is never true, so the CHECK installed
+    and always passed. Use `IS NULL` / `IS NOT NULL`.
+
+  Text inside string literals (`'...'`, `E'...'`, `$tag$...$tag$`), quoted identifiers
+  and comments is ignored. Array subscripts, `ARRAY[...]` and nested sub-arrays are
+  allowed. Install runs the same check.
+
 ## [0.2.23] — 2026-09-27
 
 A role that can edit a record but cannot read a lookup's target now gets a warning
