@@ -327,6 +327,7 @@ const SCHEMA_BINDINGS: Array<{ fileMatch: string[]; schema: string }> = [
 	{ fileMatch: ["deps/*.json"], schema: "deps" },
 	{ fileMatch: ["seed-data/*.json"], schema: "seed-data" },
 	{ fileMatch: ["settings.json"], schema: "settings" },
+	{ fileMatch: ["translations/*.json"], schema: "translations" },
 ];
 
 function schemaEntries(): Array<{ fileMatch: string[]; url: string }> {

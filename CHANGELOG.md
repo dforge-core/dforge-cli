@@ -10,6 +10,37 @@ release corresponds to a `cli-vX.Y.Z` tag in that repo. Because `pack`, `validat
 and `install` share the platform's module loader/installer, most CLI behaviour
 changes ride along with the shared services — noted below per release.
 
+## [0.2.25] — 2026-09-28
+
+Action messages are translatable (dForge-core#1299, platform 1.26.0), and the checks
+that say which ones are not yet translated run at `validate`, `pack` and `install`.
+
+Installing into a tenant keeps its `admin` system module at **1.19.1** and upgrades its
+`metadata` system module to **1.14.0**, which stores the translated messages.
+
+### Added
+
+- **`module validate`, `module pack` and `module install` warn about action messages.**
+  With `supportedLocales` in the manifest: a message a declared locale leaves
+  untranslated, and one joined from text and values, which cannot be translated. Always:
+  a `messages` entry no script uses, and a `{placeholder}` the call gives no value. The
+  warnings never fail the command. `validate --json` lists them under `warnings`.
+- **Install stores the `messages` block of `translations/<locale>.json`**, so `info()`,
+  `warn()`, `error()` and `exit()` show in the user's language.
+- `init module` binds `translations/*.json` to the new translations schema in the
+  generated `.vscode/settings.json` and `.zed/settings.json`. The schema is served from
+  `@dforge-core/dforge-mcp`, so it resolves once an MCP release carries it.
+
+### Fixed
+
+- **The DSL compiler no longer rewrites text inside strings.** `'via insert()'` compiled
+  to `'via __ctx.insert()'`, and `[field]`, `params[x]`, `now()` and `NULL` were rewritten
+  inside quotes, template literals and comments too. The compiled output of every script
+  without such text is unchanged.
+- **An unknown `auditHistory` level fails at load**, on the manifest and on each entity.
+  The accepted levels are `basic`, `fields` and `full`; the old schema listed
+  `none` / `minimal`, which install rejected with a database error.
+
 ## [0.2.24] — 2026-09-27
 
 A check constraint written in formula syntax now fails at `pack` / `validate` time
