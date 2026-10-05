@@ -325,9 +325,14 @@ const SCHEMA_BINDINGS: Array<{ fileMatch: string[]; schema: string }> = [
 	{ fileMatch: ["logic/triggers.json"], schema: "triggers" },
 	{ fileMatch: ["logic/webhooks.json"], schema: "webhooks" },
 	{ fileMatch: ["deps/*.json"], schema: "deps" },
-	{ fileMatch: ["seed-data/*.json"], schema: "seed-data" },
+	{ fileMatch: ["seed-data/*.json", "demo-data/*.json"], schema: "seed-data" },
 	{ fileMatch: ["settings.json"], schema: "settings" },
 	{ fileMatch: ["translations/*.json"], schema: "translations" },
+	{ fileMatch: ["domains.json"], schema: "domains" },
+	{ fileMatch: ["registers.json"], schema: "registers" },
+	{ fileMatch: ["traits.json"], schema: "traits" },
+	{ fileMatch: ["ui/card_layouts.json"], schema: "card-layouts" },
+	{ fileMatch: ["logic/stored_procedures.json"], schema: "stored-procedures" },
 ];
 
 function schemaEntries(): Array<{ fileMatch: string[]; url: string }> {

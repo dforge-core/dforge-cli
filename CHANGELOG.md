@@ -10,6 +10,44 @@ release corresponds to a `cli-vX.Y.Z` tag in that repo. Because `pack`, `validat
 and `install` share the platform's module loader/installer, most CLI behaviour
 changes ride along with the shared services — noted below per release.
 
+## [0.2.27] — 2026-10-06
+
+Platform 1.28.0 (`cli-v0.2.27`). Installing into a tenant keeps its `admin` system module
+at **1.21.1** and its `metadata` system module at **1.17.0**.
+
+### Added
+
+- **Demo data.** `module install --with-demo-data` also loads a module's `demo-data/`
+  (sample records), its dependencies' first; without it only `seed-data/` loads.
+  `data demo add --module <code>` adds an installed module's demo data later.
+  `tenant create --type <production|staging|dev|test>` sets the workspace type: production
+  refuses demo and generated data, and an untyped or staging workspace needs `--yes`.
+- **`register mark-imported` / `register unmark-imported`** mark documents posted in
+  another system, their movements loaded beside them (`--entity`, `--state-column`,
+  `--where`, `--source`). A marked document stays unposted and freezes like a posted one.
+- **Module upgrade migrations.** `migrations/{version}.sql` in a package runs on an
+  upgrade from below that version, inside the install transaction; `validate` and `pack`
+  check the file names.
+- **Report `label`.** `validate`, `pack` and `install` warn about a report with no
+  `label` (its description names it). `validate --json` lists it under `warnings`.
+- `init module` binds `registers.json`, `domains.json`, `traits.json`,
+  `ui/card_layouts.json`, `logic/stored_procedures.json` and `demo-data/*.json` to their
+  schemas.
+
+### Changed
+
+- **A dependency contract against a system module may declare `"entities": {}`**, a pure
+  platform-version gate for a feature that introduced no entity.
+- **Registers are declared once, in `registers.json`,** and `validate` / `install` check
+  the bindings against them (metadata 1.16.0 / 1.17.0).
+
+## [0.2.26] — 2026-09-29
+
+### Changed
+
+- **`isView` / `viewSql` on an entity are refused** by `validate`, `pack` and `install`.
+  SQL-view entities were never implemented.
+
 ## [0.2.25] — 2026-09-28
 
 Action messages are translatable (dForge-core#1299, platform 1.26.0), and the checks
