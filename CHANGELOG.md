@@ -10,6 +10,45 @@ release corresponds to a `cli-vX.Y.Z` tag in that repo. Because `pack`, `validat
 and `install` share the platform's module loader/installer, most CLI behaviour
 changes ride along with the shared services — noted below per release.
 
+## [0.2.28] — 2026-10-07
+
+`cli-v0.2.28`. Installing into a tenant keeps its `admin` system module at **1.21.1** and
+takes its `metadata` system module to **1.18.0**.
+
+### Added
+
+- **Register bindings.** `validate` and `install` check the new binding keys:
+  - `groupLinesBy`: one movement per distinct value of the named line columns.
+  - An `=` expression in `map`, `headerMap` or `dateField`.
+  - `dateTrunc` on the binding's date.
+  - A quoted constant of any type, in a dimension as well as a resource.
+- **Register `label`**, translated under a `registers` section in `translations/*.json`.
+- **`recordChangesOnly`** on an `info` register with a `recorder`, and **`absentAs`** on its
+  resources.
+- **A stored-procedure result column may name a `domain`** (dForge-core#1323) instead of
+  restating `fieldTypeCd`, `baseDatatypeCd` and `params`.
+
+### Changed
+
+- **Entity indexes the installer cannot read are refused.** An index is `fields` plus an
+  optional `using` (`btree`, `hash`, `gin`, `gist`, `brin`). One written with `columns`, or
+  with any other key, was skipped without a word; `validate`, `pack` and `install` now
+  refuse it.
+- **Register attributes are checked at install.** A binding's `movementMapping` is checked
+  against the journal entity, and every NOT NULL journal column without a default must be
+  written by every binding.
+
+### Fixed
+
+- A reinstall keeps the module's menu instead of creating a new one and leaving the old one
+  empty.
+- A summed plain column can become a `G` column on upgrade (dForge-core#1381).
+- The first posting for a new dimension combination is refused when it would leave a
+  negative balance (dForge-core#1379).
+- `addDays()` moves a date taken from a date field (dForge-core#1382). Any value that is
+  not a date, a `Date` or an ISO string is now an error.
+- DSL: a uuid read from a field is a single key in `getRecord`, `update` and `delete`.
+
 ## [0.2.27] — 2026-10-06
 
 Platform 1.28.0 (`cli-v0.2.27`). Installing into a tenant keeps its `admin` system module
