@@ -10,6 +10,41 @@ release corresponds to a `cli-vX.Y.Z` tag in that repo. Because `pack`, `validat
 and `install` share the platform's module loader/installer, most CLI behaviour
 changes ride along with the shared services — noted below per release.
 
+## [0.2.29] — 2026-10-12
+
+`cli-v0.2.29`. Installing into a tenant takes its `admin` system module to **1.23.0** and its
+`metadata` system module to **1.18.1**.
+
+### Added
+
+- **`module install` says when it installed nothing.** A package whose `version` and
+  `dbSchemaVersion` match the installed module used to be skipped without a word and reported as
+  success. It now prints `'x' is already at vN — nothing installed (use --force to reinstall)`,
+  for a single module, a remote install and a pack, where the members skipped are listed
+  (dForge-core #1412).
+- **Function libraries.** `logic/functions/*.dsl` holds helpers a module's actions share. A module
+  imports another module's functions under `"functions"` in `deps/<module>.json`, and actions and
+  libraries call them as `<module>.<fn>()`; `validate` and `install` check the imports.
+- **`settings.json` `$constraints`.** Check constraints across a module's settings, enforced by
+  `settings.set` / `setMany` / `clear` per folder.
+
+### Fixed
+
+- **A function library that does not compile is reported once**, as its own error, at `pack`,
+  `validate` and install. Actions calling into it no longer show undefined names that hid the
+  cause. A bare `[name]` in a library is refused with a message saying so.
+- **`ref cdy-hr.department` and `domain cdy-hr.x` compile**: a module code may contain `-`. `pack`
+  refuses a qualified ref whose module is neither the module, a declared dependency nor a system
+  module; install refuses a ref that names no installed entity instead of warning.
+- **Upgrade** drops the constraints and reaps the entities a module no longer declares, and
+  uninstall drops the schema the manifest names.
+- **`query()` in actions** qualifies only the tables of `FROM` / `JOIN` and write targets, and
+  leaves CTE names and built-in set functions alone.
+- **Declared text action params** reach the script as text.
+- **Registers:** unposting honours `allowNegative`; a register column in an `extends` entity is
+  refused; a negative-balance refusal says what is available and what was requested.
+- **Extension columns** honour period locks, and an extension column's labels can be translated.
+
 ## [0.2.28] — 2026-10-07
 
 `cli-v0.2.28`. Installing into a tenant keeps its `admin` system module at **1.21.1** and
