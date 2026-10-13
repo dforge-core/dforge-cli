@@ -10,6 +10,31 @@ release corresponds to a `cli-vX.Y.Z` tag in that repo. Because `pack`, `validat
 and `install` share the platform's module loader/installer, most CLI behaviour
 changes ride along with the shared services — noted below per release.
 
+## [0.2.30] — 2026-10-13
+
+`cli-v0.2.30`. Installing into a tenant keeps its `admin` system module at **1.23.0** and its
+`metadata` system module at **1.18.1**.
+
+### Added
+
+- **Field-change reactions.** An entity file may declare `reactions`: rules that suggest a stored,
+  editable value when the user edits another field, from a formula or from a `logic/functions`
+  function (`"call"`). `pack`, `validate` and install check every column, formula and function.
+  A bridge module may declare them in an extension file on its host's entity, calling its own
+  functions; the host columns a rule names go in `deps/<host>.json` as `reaction:<code>`. A reaction
+  `code` can no longer contain `.`.
+- **Accounting registers: red storno.** An `L` column binding opts in with
+  `"validation": { "storno": true }` to post negative amounts on the same side as the entry it
+  reverses. Install refuses `storno` on a column that is not an accounting ledger column.
+  `requirePositiveAmounts: false` is deprecated.
+- **Dependency contracts accept `function:<library>` provenance.**
+
+### Fixed
+
+- **A document with a register binding over its lines posts when it has no lines.** The binding
+  records nothing and the document's other registers post (#1423).
+- **DSL:** `Date.now()` and member calls named like a built-in compile untouched (#1420).
+
 ## [0.2.29] — 2026-10-12
 
 `cli-v0.2.29`. Installing into a tenant takes its `admin` system module to **1.23.0** and its
