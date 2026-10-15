@@ -10,6 +10,58 @@ release corresponds to a `cli-vX.Y.Z` tag in that repo. Because `pack`, `validat
 and `install` share the platform's module loader/installer, most CLI behaviour
 changes ride along with the shared services — noted below per release.
 
+## [0.2.31] — 2026-10-15
+
+`cli-v0.2.31`. Installing into a tenant takes its `admin` system module to **1.24.0** and its
+`metadata` system module to **1.18.2**.
+
+### Added
+
+- **`module validate --fix`** adds the missing prefix to a `roles.json` rights key. It rewrites a key
+  only when it is not an entity of the module and names exactly one action, stored procedure or
+  report; a typo, a dependency's object or a code two kinds share stays an error. `--dry-run` prints
+  the edits without writing, `--json` lists them as `fixes`. It needs a module directory, not a
+  packed archive.
+- **`register rebuild-totals --register <module.register> [--from --to]`** rebuilds a register's
+  `totals` cache whole or over a range of periods. Every cached journal now marks its cache stale when
+  it is written other than by posting (a bulk load, a migration, raw SQL), and until a full rebuild
+  every cached read goes to the journal. A module install whose cache is marked rebuilds it.
+- **Partial and unique indexes.** An entry in `indexes` takes `"where"` (a SQL condition) and
+  `"unique": true`, which together give uniqueness among the rows that are not deleted.
+- **`periodGuards` on an entity.** A closed period locks a document that posts to no register: the
+  platform fills the document's period column from its date and makes it a foreign key.
+- **Accounting reads take `options`.** `getAccountBalance` / `getAccountTurnover` accept `groupBy`,
+  `exclude` and (balance) `before`.
+- **Audit purge.** `audit.purgeEntity` deletes one entity's audit history so the entity can then be
+  deleted; purges and audit-level changes are recorded in `audit.audit_event`.
+- **An `ai` module** (`modules/ai`) is a DSL function library other modules import for an LLM call.
+
+### Changed
+
+- **`pack` and `validate` refuse a roles rights key without its prefix** (`action:`, `sp:`,
+  `report:`) when it names an action, stored procedure or report. It used to install with the grant
+  silently dropped. The install warning says which prefix is missing.
+- **An upgrade changes the tables, not only the metadata.** Column types, foreign keys, unique
+  constraints, checks and indexes are recreated to what the manifest declares; a value that does not
+  fit a new type refuses the upgrade, naming the column and an example, and nothing changes.
+- **An upgrade takes away what a module stopped declaring:** a removed register binding's guard
+  triggers, a removed `numberSequence` (switched off, its counter kept) and a removed action. A job
+  or trigger naming an action the package does not declare fails the install.
+- **A period the calendar lacks counts as closed**, and a `periodDateField` of type `timestamptz` is
+  refused: use a `date`.
+- **Module install and uninstall refuse a tenant whose system schema is ahead of the binary.**
+
+### Fixed
+
+- **A background action that sets a register state flag posts** as an inline one does, instead of
+  failing with DF006.
+- **A balance register with a `date` dimension** posts a second time instead of failing with
+  `dimN of type System.DateOnly cannot be used as a parameter value`.
+- **A number-literal formula** (`0.25`, `8`) becomes the column's DB default, and **a setting default**
+  (`$[setting]`) fills a column an insert leaves out.
+- **`before` and `getSlice`** cut at the document's instant in any time zone.
+- **An id generator no longer throws "Clock moved backwards"** when the system clock steps back.
+
 ## [0.2.30] — 2026-10-13
 
 `cli-v0.2.30`. Installing into a tenant keeps its `admin` system module at **1.23.0** and its
