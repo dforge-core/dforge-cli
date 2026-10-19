@@ -10,9 +10,47 @@ release corresponds to a `cli-vX.Y.Z` tag in that repo. Because `pack`, `validat
 and `install` share the platform's module loader/installer, most CLI behaviour
 changes ride along with the shared services — noted below per release.
 
-## [0.2.31] — 2026-10-15
+## [0.2.33] — 2026-10-19
 
-`cli-v0.2.31`. Installing into a tenant takes its `admin` system module to **1.24.0** and its
+`cli-v0.2.33`. Installing into a tenant keeps its `admin` system module at **1.24.0** and takes its
+`metadata` system module to **1.18.3**.
+
+### Added
+
+- **`register rebuild-totals --cache totals|analytic|all`** picks which cache to rebuild (default
+  `all`). It prints a line per cache rebuilt and fails when `analytic` was asked for and none was
+  rebuilt (the register has no analytic cache, or the API predates it).
+- **Analytic totals.** An `accounting` register may declare `analyticTotals`: a second cache keyed by
+  the analytic slots too, for the accounts whose chart flag is true. Posting maintains it; a write to
+  the journal around posting, or a changed flag, marks it stale until it is rebuilt (a module install
+  does that). `getAccountBalance` / `getAccountTurnover` read it for a flagged account when every
+  filter and grouping is a cached dimension or an analytic of the account.
+- **`lineDateField` on an `A` column** dates each line's movement by a line column instead of
+  `dateField`. Needs `lineEntity`; `pack` and `validate` refuse it without `dateField`, with
+  `periodDimField`, or when `lockedLineFields` / `groupLinesBy` omit it.
+- **`module install --allow-rewrite`** (`allowRewrite=true` on `POST /api/modules/import`) consents to a
+  changed column type rewriting a table larger than 1 GB.
+
+### Changed
+
+- **A type change on a large table is cheaper and asks first.** The columns of one table are checked in
+  a single scan, a widening that cannot fail (a wider `varchar` or integer, a `numeric` keeping its
+  digits) is not read, and the check, the conversion and the `NOT NULL` backfill run under the
+  maintenance timeout. A rewrite of a table over 1 GB is refused before any row is read unless
+  `--allow-rewrite` is given; the install log names every table a change rewrites, with its size.
+  Marketplace and Studio installs cannot consent and are refused.
+- **A system-module upgrade re-applies the `"dForge"` functions** from the tenant schema after its
+  migrations, and `module upgrade-all` reports "re-applied functions".
+
+### Fixed
+
+- **Reference JOINs honour the target entity's row filter**, in the query builder and in print forms.
+- **Print forms** load a child set wherever the template uses it (sorted, counted, `lines.first`), and
+  read formula columns from SQL like `data.get`.
+
+## [0.2.32] — 2026-10-15
+
+`cli-v0.2.32`. (0.2.31 reached npm as a wrapper without its platform binaries and is unusable; use 0.2.32.) Installing into a tenant takes its `admin` system module to **1.24.0** and its
 `metadata` system module to **1.18.2**.
 
 ### Added
