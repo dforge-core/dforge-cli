@@ -10,6 +10,36 @@ release corresponds to a `cli-vX.Y.Z` tag in that repo. Because `pack`, `validat
 and `install` share the platform's module loader/installer, most CLI behaviour
 changes ride along with the shared services — noted below per release.
 
+## [0.2.34] — 2026-10-19
+
+`cli-v0.2.34`. Installing into a tenant keeps its `admin` system module at **1.24.0** and its
+`metadata` system module at **1.18.3**.
+
+### Changed
+
+- **A local `module install` says that a running API still serves its cache.** A local install writes
+  the tenant database directly, so a running API keeps its cached action scripts and entity metadata
+  (register bindings included) until those entries expire or it restarts. The CLI now prints a warning
+  after every local install that changed something. An install over `--url` invalidates the cache and
+  prints nothing.
+
+### Fixed
+
+- **The test-data generator treats `int` as `int4` and `cuid` as `int8`**, like the rest of the core.
+  Binary `COPY` needs the exact wire type, so a column declared `int` or `cuid` used to be sent in
+  the wrong width and the load failed with "incorrect binary data format".
+- **A generator failure names the table and column.** Postgres' own message named neither; the error
+  now carries the table, the SQLSTATE and the `COPY … line, column` context.
+- **DSL `insert()` / `update()` write a string into a `uuid` column as a uuid.** The string used to
+  reach Postgres as text, which does not assign to `uuid`. A string that is not a uuid now fails
+  naming the column.
+- **A text that looks like a date stays text in a text column.** A `yyyy-MM-dd` string written by a
+  script to a `varchar` / `char` / `text` / `citext` column was turned into a timestamp, and a
+  `varchar(10)` column then refused its 19-character rendering (#1463).
+- **Print forms: Scriban 7.2.5 → 7.5.1**, with the upstream bug fixes since. Shipped forms render
+  unchanged. `blank` and `empty` are still not Liquid on the server; test emptiness with
+  `{% unless x %}` or `x != nil`.
+
 ## [0.2.33] — 2026-10-19
 
 `cli-v0.2.33`. Installing into a tenant keeps its `admin` system module at **1.24.0** and takes its
