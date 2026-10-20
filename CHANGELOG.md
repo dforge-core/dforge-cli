@@ -10,6 +10,47 @@ release corresponds to a `cli-vX.Y.Z` tag in that repo. Because `pack`, `validat
 and `install` share the platform's module loader/installer, most CLI behaviour
 changes ride along with the shared services — noted below per release.
 
+## [0.2.35] — 2026-10-21
+
+`cli-v0.2.35`. Installing into a tenant takes its `admin` system module to **1.26.0** and keeps its
+`metadata` system module at **1.18.3**.
+
+### Added
+
+- **DSL `printPdf(entityCd, key, templateCd)`** renders a print template to a PDF as the current user and
+  returns the archived file as a descriptor. `sendEmail()` takes a fourth argument, a `printPdf()` result
+  or an array of them, to attach. The compiler checks the entity argument; a scheduled job or a background
+  action cannot use `printPdf()`, and a scheduled job's email with attachments fails.
+- **DSL `downloadText(content, fileName, encoding?, mimeType?)` / `downloadBase64(base64, fileName,
+  mimeType?)`** hand the user a file the script built, in any code page (`windows-1251`, `cp866`, …).
+  Both return the signed download URL, so a background run can pass it on in `notify()`.
+- **Stored-procedure column headers translate** under `storedProcedures.<sp_cd>.columns.<column_cd>.label`.
+  `module pack` and `module validate` require one per declared column for each non-English supported
+  locale; install only warns, also when a translation names a column the module lacks. `module export`
+  writes them back.
+- **A print form reads a set of a document's line** (`{% for a in l.attributes %}`), one level deep.
+
+### Changed
+
+- **A module installs the same from a Windows checkout.** Every file of a package is read with its line
+  endings normalised to `\n`, and the DSL compiler, DDL and validation messages end lines with `\n`
+  instead of the platform's newline. A `.dsl` template literal no longer keeps a `\r`.
+- **A printed set needs Select on its entity**, as `data.get` does. A set the user cannot read prints
+  empty. `print.render` and `print.renderPdf` check Select on the printed entity.
+
+### Fixed
+
+- **A request filter with an unknown operator is refused** (`INVALID_REQUEST`, naming the operator, its
+  column and the valid set) instead of being dropped with a warning. A script filtering with
+  `{o: 'like'}` used to read, and could delete, every row. `mask` is SQL `LIKE`.
+- **An action saves a field on a record keyed by a `uuid`.** The write-back bound the key as text and
+  failed with `operator does not exist: uuid = text`; a digits-only `varchar` key failed the other way.
+- **`update()` posts and unposts through the register engine**, in a trigger action and in a background
+  run: a background `update()` that sets a posting state opens its own transaction. A refused posting
+  rolls the host's write back. (#1448)
+- **Print forms:** dashed `{%- comment -%}` blocks no longer print on the server, and a currency column
+  shows its glyph (`€`, `$`, `₴`) instead of the ISO code.
+
 ## [0.2.34] — 2026-10-19
 
 `cli-v0.2.34`. Installing into a tenant keeps its `admin` system module at **1.24.0** and its
