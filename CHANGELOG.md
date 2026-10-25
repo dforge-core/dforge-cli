@@ -10,6 +10,38 @@ release corresponds to a `cli-vX.Y.Z` tag in that repo. Because `pack`, `validat
 and `install` share the platform's module loader/installer, most CLI behaviour
 changes ride along with the shared services — noted below per release.
 
+## [0.2.36] — 2026-10-25
+
+`cli-v0.2.36`. Installing into a tenant takes its `admin` system module to **1.30.1** and its
+`metadata` system module to **1.20.0**.
+
+### Added
+
+- **DSL `attachText(content, fileName, encoding?, mimeType?)` / `attachBase64(base64, fileName, mimeType?)`**
+  build a file for `sendEmail()`'s fourth argument and keep its own type (an `.ics` as `text/calendar`).
+  Unlike a `printPdf()` file they have no owner, so a scheduled job can attach them. They share the per-run
+  file limit with `downloadText()` / `downloadBase64()`; a job whose email exceeds 5 files or 10 MB fails.
+- **Sign in with a passkey.** `auth login` can use a passkey, and no longer offers one the account does not
+  have.
+- **Account reads can leave loaded postings out by document key.** A register that names `importedKeyField`
+  lets `getAccountBalance` / `getAccountTurnover` `exclude` one document or an array of them.
+- **A user column reads like a reference in actions:** `[owner_id].[email]` and `[owner_id].[full_name]`
+  (#1499).
+- **Modules ship action param sets**, and the run dialog evaluates saved param values.
+
+### Changed
+
+- **Install warns on a dropdown value outside the list,** and a write is validated against the list. The test-data generator no longer produces such values.
+- **`downloadText()` / `downloadBase64()` files are saved through the authenticated API** (#1526).
+- **`notify()` record links open in a folder the recipient can access** (#1483).
+
+### Fixed
+
+- **`auth login` answers Esc** when started from the VS Code extension on macOS and Linux; it reads the key
+  from the terminal.
+- **Import:** an ambiguous reference in one row no longer loses the whole file (#1527).
+- **System modules keep a migration ledger,** and the DSL compiler handles indexing after a call.
+
 ## [0.2.35] — 2026-10-21
 
 `cli-v0.2.35`. Installing into a tenant takes its `admin` system module to **1.26.0** and keeps its
