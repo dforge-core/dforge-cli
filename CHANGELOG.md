@@ -10,6 +10,25 @@ release corresponds to a `cli-vX.Y.Z` tag in that repo. Because `pack`, `validat
 and `install` share the platform's module loader/installer, most CLI behaviour
 changes ride along with the shared services — noted below per release.
 
+## [0.2.37] — 2026-10-29
+
+`cli-v0.2.37`. Installing into a tenant takes its `admin` system module to **1.30.2** and its
+`metadata` system module to **1.20.0**.
+
+### Added
+
+- **`SLICE('module.register', 'resource', date, 'dimension', value, …)`** in `F` column formulas reads an
+  information register's value on a date, so a print form prints each line's price on its document's date. Install
+  checks the register, resource and dimensions; `G` columns refuse it.
+- **Grid and list grouping:** a `grid` or `list` view's `viewConfig` can ship `groupByField`, `groupByOptions` and
+  `collapsedGroups`; pack and install check them (each named column is a dropdown, flags, reference or user column).
+
+### Changed
+
+- **Print responses carry `warnings`** for what printed empty, and an upgrade deletes the print templates a package
+  no longer declares.
+- **DSL `module.entity` takes the module code;** install refuses a taken schema.
+
 ## [0.2.36] — 2026-10-25
 
 `cli-v0.2.36`. Installing into a tenant takes its `admin` system module to **1.30.1** and its
