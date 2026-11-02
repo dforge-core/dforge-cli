@@ -10,6 +10,48 @@ release corresponds to a `cli-vX.Y.Z` tag in that repo. Because `pack`, `validat
 and `install` share the platform's module loader/installer, most CLI behaviour
 changes ride along with the shared services — noted below per release.
 
+## [0.2.38] — 2026-11-02
+
+`cli-v0.2.38`. Installing into a tenant takes its `admin` system module to **1.31.0** and keeps its
+`metadata` system module at **1.20.0**.
+
+### Added
+
+- **Query columns (`columnType: "Q"`):** a read-only list of rows a record reads, shown on the card beside its
+  sets and readable by a print form. It reads a balance register as of the record's date, or a query whose
+  `@name` filters are filled from the record; `params.viz` shows the rows as a report visualization.
+  `data.getQueryColumn` returns them with the reader's rights. Install refuses an unknown register or entity,
+  a missing `asOf`, an unfilled or extra `@param` and a `viz` without a `type`; a data view column and a
+  report parameter source refuse a Q column (#1584).
+- **`SLICE()` follows one reference:** a resource or a dimension may be a path one hop deep
+  (`'person_id.name'`, `'employee_id.person_id'`). Install refuses a path through a column that is not a
+  reference's key; `module pack` refuses more than one hop (#1585).
+- **Print:** a template's `pageSettings.culture` also formats `_fmt.<column>` in browser print and preview;
+  `module pack` refuses a name that is no culture name. The math filters take a numeric string, lists answer
+  `.first` / `.last`, and `format_date` takes `%-m %-d %-H %-I %-M %-S`, `%y` and `%%`.
+- **Workspace settings:** a time zone, and **Require two-step verification**. `auth login` meets the second
+  step (authenticator code or recovery code) of an account that has one.
+
+### Changed
+
+- **`canExecute` is enforced in full on `action.execute`:** arithmetic, `IN`, `BETWEEN`, formula functions and
+  `[ref].[col]` are computed in SQL, and a condition the server cannot compute refuses the action. Install
+  rejects `$[setting]`, `SUM` / `COUNT` / `AVG` and unknown functions in `canExecute`, so a module using them
+  stops installing.
+- **Posting:** a direct `data.insert` / `data.update` that flips a register's state flag needs `E` on the
+  register's `postAction` / `unpostAction`. A binding with neither gets a pack / validate warning.
+- **Background actions** run `isTransacted` in one transaction and are re-admitted at run time.
+- **Print and queries no longer fail** on a formula PostgreSQL refuses, a loop over 1000 lines or an
+  unparseable formula; a set prints its rows in the order of every key column.
+- **`idempotencyKey` in `logic/jobs.json` is documented as reserved,** not enforced.
+
+### Fixed
+
+- **`SLICE()`:** `+` concatenates over `IF` / `COALESCE` / `SLICE` text, and a register on a computed column is
+  refused.
+- **Time zones** resolve `Europe/Kyiv` on Windows 10.
+- **Action buttons follow a language switch** without a reload (#1548).
+
 ## [0.2.37] — 2026-10-29
 
 `cli-v0.2.37`. Installing into a tenant takes its `admin` system module to **1.30.2** and its
