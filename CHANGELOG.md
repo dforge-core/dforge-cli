@@ -10,6 +10,35 @@ release corresponds to a `cli-vX.Y.Z` tag in that repo. Because `pack`, `validat
 and `install` share the platform's module loader/installer, most CLI behaviour
 changes ride along with the shared services — noted below per release.
 
+## [0.2.39] — 2026-11-04
+
+`cli-v0.2.39`. Installing into a tenant takes its `admin` system module to **1.31.1** and keeps its
+`metadata` system module at **1.20.0**.
+
+### Added
+
+- **`module test <path> --url <workspace>`** runs a module's `tests/*.test.json` over the API as the signed-in user:
+  `insert` / `update` / `delete` / `action` steps, and `record`, `count`, `error` and `refused` expectations. It runs in
+  the module's own folder (`--folder` overrides), reports with `--reporter console|json`, and exits 1 when a test fails.
+  A step or expectation it does not support fails the test rather than being skipped. Tests commit and leave their
+  records behind, so use a fresh test workspace. `action.getEntityActions` now returns each action's `actionCd`, which
+  the runner needs, so the API must be on this release too. Guide: `docs/modules/module-tests.md`.
+- **A dependency contract lists print snippets:** `deps/<provider>.json` takes `"snippets"`, the provider's snippets the
+  module's templates include as `{% include '<provider>.<snippet>' %}`. It counts as consumption, so a contract with only
+  snippets is valid. Validate, pack and install refuse an include of a snippet whose module is not a dependency or that
+  the contract does not list, and install refuses a listed snippet the provider does not ship.
+
+### Changed
+
+- **`module validate` refuses `parentField` on a grid or list view.**
+- **Writes outside the API follow the entity's audit level:** a scheduled job's `update()`, a synchronous trigger action,
+  a background action or raw SQL logs `basic`, `fields` or `full` detail as the entity's `auditHistory` says, and nothing
+  for an entity with no level (#1502).
+
+### Fixed
+
+- **Zoneless date-times** are read in the caller's time zone for `timestamptz` and `timetz` columns.
+
 ## [0.2.38] — 2026-11-02
 
 `cli-v0.2.38`. Installing into a tenant takes its `admin` system module to **1.31.0** and keeps its
