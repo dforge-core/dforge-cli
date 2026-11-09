@@ -10,6 +10,33 @@ release corresponds to a `cli-vX.Y.Z` tag in that repo. Because `pack`, `validat
 and `install` share the platform's module loader/installer, most CLI behaviour
 changes ride along with the shared services — noted below per release.
 
+## [0.2.41] — 2026-11-09
+
+`cli-v0.2.41`. No change to the system modules a tenant install carries.
+
+### Fixed
+
+- **A local tenant URL works on Windows.** `--url http://acme._.localhost:5179` failed with "No such host is known",
+  because the Windows resolver knows only `localhost` itself. The CLI now connects any `*.localhost` host to the loopback
+  (`::1`, then `127.0.0.1`) and keeps the Host header, which picks the tenant. A configured proxy
+  (`HTTP_PROXY`, system settings) is bypassed for those hosts and still used for every other, credentials included.
+- **A bad URL or a dead connection reads the same in every command.** A URL .NET cannot parse reports
+  "Malformed URL" instead of a stack trace, and a timeout or failed connection gets one message, in `module install`,
+  `data` and the remote module commands alike.
+
+## [0.2.40] — 2026-11-08
+
+`cli-v0.2.40`. Installing into a tenant takes its `admin` system module to **1.32.0** and keeps its
+`metadata` system module at **1.20.0**.
+
+### Changed
+
+- **A field rule that cannot work is refused.** A `params.fieldOptions` rule (`canEdit`, `foreColor`, `backColor`) on a
+  column or on a column domain that does not parse (not-equal is `!=`, not `<>`) or calls an unknown function fails
+  `module validate`, `module pack` and install. Before, only validate and pack looked at a column's rule, and none looked
+  at a domain's, so such a rule was stored and then dropped silently in the browser. A module that ships domains and no
+  entities is checked too.
+
 ## [0.2.39] — 2026-11-04
 
 `cli-v0.2.39`. Installing into a tenant takes its `admin` system module to **1.31.1** and keeps its
