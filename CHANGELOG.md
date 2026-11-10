@@ -10,6 +10,36 @@ release corresponds to a `cli-vX.Y.Z` tag in that repo. Because `pack`, `validat
 and `install` share the platform's module loader/installer, most CLI behaviour
 changes ride along with the shared services — noted below per release.
 
+## [0.2.42] — 2026-11-10
+
+`cli-v0.2.42`. No change to the system modules a tenant install carries.
+
+### Added
+
+- **A report param can be bounded by another.** `"date_to": { "params": { "min": "@date_from" } }` keeps a period's
+  end from preceding its start; `max` bounds from above. `module validate`, `pack` and `install` refuse an `@` naming
+  no param of the report, or the param itself.
+- **A report lookup whose entity another param picks.** `"link": { "entity": "@p_kind1.target_entity" }` lists the rows
+  of the entity whose code that column holds on the row picked in `p_kind1`. Install refuses a malformed or unknown
+  reference, a source that is not a lookup on a fixed entity, a column that entity lacks, and an `otherKey`.
+  Report params only.
+- **`ocrExtract([doc], 'platform')`** calls the deployment's own OCR service; the `ocr` gateway module holds one OCR
+  setting for every module, and a setting's `label` and `desc` are stored and shown on the settings page.
+
+### Changed
+
+- **Param rules are enforced when a report or an action runs**, not only in the dialog: a missing required param, or a
+  value outside `min` / `max` / its `@other` bound, is refused naming the param.
+- **A write the database refuses in an action reads as the refusal**, translated into the user's language, without the
+  "Script execution error:" prefix.
+- **`action.execute` returns `{ "results": [ ... ] }`**, one typed entry per execution (breaking for a caller outside
+  this repo that read the flat `messages` / `records` / `downloadUrl`).
+
+### Fixed
+
+- A chart's drill-through filters by the value, not by its label; an empty bucket matches null and `''`.
+- A module's own entities in DSL resolve with the module schema, not only the entity name.
+
 ## [0.2.41] — 2026-11-09
 
 `cli-v0.2.41`. No change to the system modules a tenant install carries.
