@@ -10,6 +10,33 @@ release corresponds to a `cli-vX.Y.Z` tag in that repo. Because `pack`, `validat
 and `install` share the platform's module loader/installer, most CLI behaviour
 changes ride along with the shared services — noted below per release.
 
+## [0.2.43] — 2026-11-12
+
+`cli-v0.2.43`. Installing into a tenant takes its `admin` system module to **1.33.0** and keeps its `metadata` system
+module at **1.20.0**.
+
+### Added
+
+- **A workspace can keep its files in S3** (AWS or an S3-compatible store). The stores are entries under `providers` in
+  the workspace's `file_storage_config`; `defaultProvider` picks the store for new files and a file column can choose
+  another with `params.storage.provider`. Admin 1.33.0 stores a print archive's file as one `file` value, the shape a
+  file column holds, and converts the existing rows.
+
+### Changed
+
+- **`tenant backup` refuses files in any non-local store.** The archive holds the local file root only, so a workspace
+  with an S3 store beside a local default, or a default switched back to local, is refused with files included
+  instead of producing an archive without its S3 files. `--no-files` still backs up the database alone.
+
+### Fixed
+
+- **`tenant restore` keeps the workspace's file stores.** The restored `file_storage_config` is the archived one with
+  only the local `rootPath` repointed; it was replaced by a plain local config, which dropped each store's bucket,
+  prefix and credential reference and left the restored rows pointing at nothing, `--no-files` included. Restoring
+  beside a workspace that still exists shares its bucket and prefix until repointed, and now warns about it.
+- **A large company logo no longer cuts a printed document short.** A single value over 1 MiB, such as a base64 logo,
+  was truncated mid-attribute by the template engine.
+
 ## [0.2.42] — 2026-11-10
 
 `cli-v0.2.42`. No change to the system modules a tenant install carries.
