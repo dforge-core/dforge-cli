@@ -10,6 +10,45 @@ release corresponds to a `cli-vX.Y.Z` tag in that repo. Because `pack`, `validat
 and `install` share the platform's module loader/installer, most CLI behaviour
 changes ride along with the shared services — noted below per release.
 
+## [0.2.44] — 2026-11-16
+
+`cli-v0.2.44`. Installing into a tenant takes its `admin` system module to **1.35.1** and keeps its `metadata` system
+module at **1.20.0**.
+
+### Added
+
+- **Excel export templates.** A module ships `.xlsx` workbooks under `export_templates/`, bound to an entity in
+  `ui/export_templates.json` (`entityCd`, `file`, optional `description`). Install stores them, replaces them on
+  upgrade and removes them when the package stops declaring them; a template the tenant uploaded is never touched.
+- **`exportXlsx(entity, templateCd, { filter, orderBy, fileName })`** in an action fills a template with the entity's
+  rows, under the caller's rights, and hands the workbook over as the download. It returns `{ url, fileName,
+  recordCount }`, counts against the download limit and is refused in a scheduled or background run.
+- **A report's panel titles can be translated** in a locale file under `reports.<cd>.panels`, keyed by the authored
+  title.
+- **`$[setting]` in an action's `canExecute`** installs and works; it is resolved for the folder of the call. A setting
+  set nowhere reads NULL.
+- **A marketplace pack installs in the background**, so a pack with demo data no longer depends on one long request.
+- **Marketplace descriptions** hold up to 1000 characters, are cut at a sentence and refresh on every publish; the
+  manifest may carry `shortDescription`.
+
+### Changed
+
+- **Upgrading to an entities-only module removes its folder and menu.** A version that stops declaring
+  `ui/folders.json` and `ui/menus.json` no longer leaves the old folder in the sidebar. A menu item a user authored is
+  kept.
+- **Installing grants the installer a module's roles in folders that cut inheritance.**
+- **A failed file delete is retried with backoff**, and the sweep of orphaned files skips an object store that another
+  workspace's entry shares.
+- **Jint 3.1.0 to 4.18.0** (the action DSL engine), MiniExcel 1.47.0, CsvHelper 34.0.0. A CSV import error names the
+  line a record starts on.
+
+### Fixed
+
+- **"Is empty" / "is not empty" on a reference with a NOT NULL key** match a key with no target row, in reads and in
+  row filters alike.
+- **`$[setting]` is not read as a `[field]`** by the DSL parser, so it no longer raises a field-name diagnostic.
+- **Validation messages on the card** follow the user's language.
+
 ## [0.2.43] — 2026-11-12
 
 `cli-v0.2.43`. Installing into a tenant takes its `admin` system module to **1.33.0** and keeps its `metadata` system
