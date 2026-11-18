@@ -10,6 +10,40 @@ release corresponds to a `cli-vX.Y.Z` tag in that repo. Because `pack`, `validat
 and `install` share the platform's module loader/installer, most CLI behaviour
 changes ride along with the shared services — noted below per release.
 
+## [0.2.45] — 2026-11-18
+
+`cli-v0.2.45`. Installing into a tenant takes its `admin` system module to **1.39.0** and its `metadata` system module
+to **1.21.0**.
+
+### Added
+
+- **A module declares its secrets** under `secrets` in the manifest (`label`, optional `description`). Once declared, a
+  fixed-string `getSecret('x')`, `fetchMail({ secret })` or webhook `secretCd` naming an undeclared code fails
+  `module validate`, pack and install. A secret can also have a value per folder, resolved like a setting.
+- **`notify(userId, message, { entity, recordId, caption? })`** links the notification to another record, in a folder
+  where each recipient can read that entity.
+- **An entity can switch off "+ Create" in the lookups pointing at it** with `"lookupCreate": false`; a Reference
+  column's `params.lookupCreate` overrides it for one lookup. A module-wide `lookupCreate` in the manifest is refused.
+- **A module opens its own card layout by default for another module's entity** (`isDefault: true` on a layout for that
+  entity applies in the module's folders only). A layout can be saved private to its owner.
+- **Module tests** (`module test`, `module validate`): checks over rows with `query` and `register`, `$as` to name the
+  record a step added, and `test.sql` for SQL in the temporary test workspace. A truncated register, a `precision`
+  outside 0 to 28 and a query that returned warnings now fail the test; a test workspace past its expiry is refused.
+- **Record watching:** a card toggle to follow a record, a Watched records list and a per-recipient link in each
+  notification.
+
+### Changed
+
+- **A library function of another module** reads that module's own settings, secrets and number prefixes.
+- **Upgrading a host module keeps the items a bridge merged into its menu.** An upgrade that turns a module into a
+  bridge removes its old folders, and a bridge upgrade with no host no longer makes a tenant group a host.
+
+### Fixed
+
+- **A roll-up (`G`) column an extension adds to another module's entity** is kept current by a trigger on the
+  extension's child table; a same-row `G` expression on an extension is refused at pack.
+- **"Apply to all entities referencing"** on a folder filter saves when an entity references the parent twice.
+
 ## [0.2.44] — 2026-11-16
 
 `cli-v0.2.44`. Installing into a tenant takes its `admin` system module to **1.35.1** and keeps its `metadata` system
