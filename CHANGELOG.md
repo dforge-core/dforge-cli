@@ -10,6 +10,32 @@ release corresponds to a `cli-vX.Y.Z` tag in that repo. Because `pack`, `validat
 and `install` share the platform's module loader/installer, most CLI behaviour
 changes ride along with the shared services — noted below per release.
 
+## [0.2.46] — 2026-11-19
+
+`cli-v0.2.46`. The `admin` and `metadata` system modules are unchanged (**1.39.0**, **1.21.0**).
+
+### Added
+
+- **`module pack` draws the module's data model** from its entities and adds it to the package as
+  `assets/data-model.svg` (a box per entity, an arrow per reference column; other modules' entities in the accent
+  colour). A module's own `assets/data-model.svg` is kept, and a single-entity module gets none. Show it in the README
+  with `![Data model](assets/data-model.svg)`. `module diagram <path> [--out file.svg]` prints or writes the same SVG.
+- **`module pack` and `module validate` warn about a missing README per language.** A locale in `supportedLocales` with
+  no `translations/README.<locale>.md` gives `No README for de-DE: readers in that language get the English page`.
+  Never an error: the marketplace page falls back to `README.md`. The files travel in the package, and a publish stores
+  them so the marketplace, dforge.io and the in-app dialog show the reader's language.
+- **Module tests run SQL** in a `given` block and an expectation (`{ "sql": "…" }`), through `test.sql`, only in the
+  test's temporary workspace; with `--shared` the test fails and says so.
+
+### Changed
+
+- **A value in a message is written for the reader.** A date, time or number a module puts into `info()`, `warn()` or
+  `error()` follows the reader's date, time and number format (Settings → Date, time & numbers), on top of their
+  browser's locale; a placeholder may name a format, `{total:n2}`, `{date:D}`. A whole number keeps its plain digits.
+- **A trigger's refusal shows the module's own sentence.** An `error()` raised by a synchronous trigger is shown as
+  written, not inside the platform's "Blocked by …" frame; the code stays `TRIGGER_ACTION_FAIL`. A failure the module did
+  not word keeps the frame.
+
 ## [0.2.45] — 2026-11-18
 
 `cli-v0.2.45`. Installing into a tenant takes its `admin` system module to **1.39.0** and its `metadata` system module
