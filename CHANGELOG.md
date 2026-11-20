@@ -10,6 +10,29 @@ release corresponds to a `cli-vX.Y.Z` tag in that repo. Because `pack`, `validat
 and `install` share the platform's module loader/installer, most CLI behaviour
 changes ride along with the shared services — noted below per release.
 
+## [0.2.47] — 2026-11-20
+
+`cli-v0.2.47`. The `admin` and `metadata` system modules are unchanged (**1.39.0**, **1.21.0**).
+
+### Added
+
+- **DSL `fmt(value, fieldType, precision?)`** tags a message value as `currency`, `number`, `percent`, `date`,
+  `datetime` or `time`, and the message writes it for the reader as a grid column of that type is shown:
+  `info('Paid {amount}.', { amount: fmt(total, 'currency') })` reads `1 300,90` for a uk-UA reader and `1,300.90` for an
+  English one. The text and its translations stay a plain `{amount}`. `module validate` knows the built-in.
+- **A register query column takes `before`** in place of `asOf`: the balance up to the record's moment, exclusive, so the
+  record's own movements are not in it (#1726).
+
+### Changed
+
+- **A date action parameter is written as a date in a message.** ISO text from a `date` or `datetime` parameter, whole
+  or with a zone, follows the reader's date format and clock; other text is written as given.
+
+### Fixed
+
+- **`DATE(v)` drops the time of day** and `DATEDIFF(…, 'DAY')` between calendar dates no longer loses a day to daylight
+  saving (#1182). A formula that relied on `DATE(v)` keeping the time changes result.
+
 ## [0.2.46] — 2026-11-19
 
 `cli-v0.2.46`. The `admin` and `metadata` system modules are unchanged (**1.39.0**, **1.21.0**).
