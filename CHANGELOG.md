@@ -10,6 +10,17 @@ release corresponds to a `cli-vX.Y.Z` tag in that repo. Because `pack`, `validat
 and `install` share the platform's module loader/installer, most CLI behaviour
 changes ride along with the shared services — noted below per release.
 
+## [0.2.48] — 2026-11-23
+
+`cli-v0.2.48`. The `admin` and `metadata` system modules are unchanged (**1.39.0**, **1.21.0**).
+
+### Added
+
+- **`module test` checks a report by its code:** `{ "report": "code", "dataset"?, "params"? }` in a test's `expect` runs
+  the report as the test's user (another module's as `"crm.sales_funnel"`) and matches the rows of its dataset like a
+  `query` check. `dataset` is required when the report has more than one; a result cut at the row cap or run with
+  warnings fails the check. `module validate` checks the report and dataset against `ui/reports.json` (#1162).
+
 ## [0.2.47] — 2026-11-20
 
 `cli-v0.2.47`. The `admin` and `metadata` system modules are unchanged (**1.39.0**, **1.21.0**).
