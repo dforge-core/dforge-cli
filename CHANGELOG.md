@@ -10,6 +10,26 @@ release corresponds to a `cli-vX.Y.Z` tag in that repo. Because `pack`, `validat
 and `install` share the platform's module loader/installer, most CLI behaviour
 changes ride along with the shared services — noted below per release.
 
+## [0.2.49] — 2026-11-24
+
+`cli-v0.2.49`. The `admin` system module is unchanged (**1.39.0**); `metadata` is **1.21.1** (the `checklist` set field type).
+
+### Added
+
+- **`module validate` reads module tests further (#1162):** a `register` check must name an accounting register of
+  `registers.json` in full (`gl.ledger`) with a `resource` it declares; a `query` check must name an entity of the module,
+  and every column its `columns`, `filter` and `sort` name must be one of that entity's (a `count`'s `where` too); a step's
+  `"$as": { "q": "quote" }` must name an entity the module has. An `insert` with an object `$as`, or another step with a
+  string one, is reported.
+- **Matrix date axis `grain`:** `month`, `quarter` and `year` beside `day`, each with its window (`day`/`week`,
+  `month`/`year`, `quarter`/`year`, `year`/`years`). Pack and install refuse an unknown grain or a window that does not go
+  with it, naming the view (#1570, #1750).
+- **`checklist` set field type and `params.todo`:** a set column shown as a checklist on a card; a yes/no column with
+  `params.todo: true` is the one it ticks (#1572).
+- **Color rules on a grid and a list:** `viewConfig.colorRules`. Pack and install refuse a column the entity does not
+  define, an operator the server cannot translate, a rule with no `when` or with neither `bg` nor `fg`, and `colorRules` on
+  another view type.
+
 ## [0.2.48] — 2026-11-23
 
 `cli-v0.2.48`. The `admin` and `metadata` system modules are unchanged (**1.39.0**, **1.21.0**).
